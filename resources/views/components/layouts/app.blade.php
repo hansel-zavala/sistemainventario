@@ -48,6 +48,21 @@
                 <div class="pt-3">
 
                     <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Inventario
+                    </p>
+
+                    <a
+                        href="{{ route('inventario.equipos') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Equipos tecnológicos
+                    </a>
+
+                </div>
+
+                <div class="pt-3">
+
+                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                         Catálogos
                     </p>
 

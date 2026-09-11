@@ -8,6 +8,7 @@ use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
 use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
 use App\Livewire\Catalogos\Departamentos\Index as DepartamentosIndex;
 use App\Livewire\Catalogos\UnidadesMedida\Index as UnidadesMedidaIndex;
+use App\Livewire\Inventario\Equipos\Index as EquiposIndex;
 
 Route::middleware('guest')->group(function () {
 
@@ -59,6 +60,11 @@ Route::middleware('auth')->group(function () {
         '/catalogos/unidades-medida',
         UnidadesMedidaIndex::class
     )->name('catalogos.unidades-medida');
+
+    Route::get(
+        '/inventario/equipos',
+        EquiposIndex::class
+    )->name('inventario.equipos');
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');
