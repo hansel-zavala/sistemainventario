@@ -45,6 +45,49 @@
                     Dashboard
                 </a>
 
+                <div class="pt-3">
+
+                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Catálogos
+                    </p>
+
+                    <a
+                        href="{{ route('catalogos.categorias') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Categorías
+                    </a>
+
+                    <a
+                        href="{{ route('catalogos.tipos-equipo') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Tipos de equipo
+                    </a>
+
+                    <a
+                        href="{{ route('catalogos.marcas') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Marcas
+                    </a>
+
+                    <a
+                        href="{{ route('catalogos.departamentos') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Departamentos
+                    </a>
+
+                    <a
+                        href="{{ route('catalogos.unidades-medida') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Unidades de medida
+                    </a>
+
+                </div>
+
                 @role('Administrador')
 
                     <a

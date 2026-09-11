@@ -3,6 +3,11 @@
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
+use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
+use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
+use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
+use App\Livewire\Catalogos\Departamentos\Index as DepartamentosIndex;
+use App\Livewire\Catalogos\UnidadesMedida\Index as UnidadesMedidaIndex;
 
 Route::middleware('guest')->group(function () {
 
@@ -29,6 +34,31 @@ Route::middleware('auth')->group(function () {
             UsuariosIndex::class
         )->name('administracion.usuarios');
     });
+
+    Route::get(
+        '/catalogos/categorias',
+        CategoriasIndex::class
+    )->name('catalogos.categorias');
+
+    Route::get(
+        '/catalogos/tipos-equipo',
+        TiposEquipoIndex::class
+    )->name('catalogos.tipos-equipo');
+
+    Route::get(
+        '/catalogos/marcas',
+        MarcasIndex::class
+    )->name('catalogos.marcas');
+
+    Route::get(
+        '/catalogos/departamentos',
+        DepartamentosIndex::class
+    )->name('catalogos.departamentos');
+
+    Route::get(
+        '/catalogos/unidades-medida',
+        UnidadesMedidaIndex::class
+    )->name('catalogos.unidades-medida');
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');
