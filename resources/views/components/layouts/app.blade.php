@@ -58,6 +58,13 @@
                         Equipos tecnológicos
                     </a>
 
+                    <a
+                        href="{{ route('inventario.herramientas') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Herramientas
+                    </a>
+
                 </div>
 
                 <div class="pt-3">
