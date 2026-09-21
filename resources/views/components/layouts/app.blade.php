@@ -65,6 +65,13 @@
                         Herramientas
                     </a>
 
+                    <a
+                        href="{{ route('inventario.insumos') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Insumos
+                    </a>
+
                 </div>
 
                 <div class="pt-3">
