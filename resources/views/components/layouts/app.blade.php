@@ -72,6 +72,20 @@
                         Insumos
                     </a>
 
+                    <a
+                        href="{{ route('inventario.tintas') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Tinta
+                    </a>
+
+                    <a
+                        href="{{ route('inventario.tintas.recargas') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Recargas de tinta
+                    </a>
+
                 </div>
 
                 <div class="pt-3">

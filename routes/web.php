@@ -11,6 +11,8 @@ use App\Livewire\Catalogos\UnidadesMedida\Index as UnidadesMedidaIndex;
 use App\Livewire\Inventario\Equipos\Index as EquiposIndex;
 use App\Livewire\Inventario\Herramientas\Index as HerramientasIndex;
 use App\Livewire\Inventario\Insumos\Index as InsumosIndex;
+use App\Livewire\Inventario\Tintas\Index as TintasIndex;
+use App\Livewire\Inventario\Tintas\Recargas\Index as RecargasTintaIndex;
 
 Route::middleware('guest')->group(function () {
 
@@ -77,6 +79,16 @@ Route::middleware('auth')->group(function () {
         '/inventario/insumos',
         InsumosIndex::class
     )->name('inventario.insumos');
+
+    Route::get(
+        '/inventario/tintas',
+        TintasIndex::class
+    )->name('inventario.tintas');
+
+    Route::get(
+        '/inventario/tintas/recargas',
+        RecargasTintaIndex::class
+    )->name('inventario.tintas.recargas');
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');
