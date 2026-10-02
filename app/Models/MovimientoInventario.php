@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+
 class MovimientoInventario extends Model
 {
     use HasFactory;
@@ -16,6 +17,9 @@ class MovimientoInventario extends Model
     protected $fillable = [
         'tipo',
         'fecha_movimiento',
+        'departamento_destino_id',
+        'persona_recibe',
+        'motivo',
         'observaciones',
         'registrado_por',
     ];
@@ -40,6 +44,14 @@ class MovimientoInventario extends Model
         return $this->hasMany(
             MovimientoInventarioDetalle::class,
             'movimiento_inventario_id'
+        );
+    }
+
+    public function departamentoDestino(): BelongsTo
+    {
+        return $this->belongsTo(
+            Departamento::class,
+            'departamento_destino_id'
         );
     }
 }

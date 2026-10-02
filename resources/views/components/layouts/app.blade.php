@@ -101,6 +101,13 @@
                         Entradas
                     </a>
 
+                    <a
+                        href="{{ route('movimientos.salidas') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Salidas
+                    </a>
+
                 </div>
 
                 <div class="pt-3">
