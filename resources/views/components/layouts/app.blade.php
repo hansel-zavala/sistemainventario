@@ -91,6 +91,21 @@
                 <div class="pt-3">
 
                     <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Movimientos
+                    </p>
+
+                    <a
+                        href="{{ route('movimientos.entradas') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Entradas
+                    </a>
+
+                </div>
+
+                <div class="pt-3">
+
+                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                         Catálogos
                     </p>
 
