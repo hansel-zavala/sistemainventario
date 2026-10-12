@@ -15,6 +15,8 @@ use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Livewire\Inventario\Tintas\Recargas\Index as RecargasTintaIndex;
 use App\Livewire\Movimientos\Entradas\Index as EntradasIndex;
 use App\Livewire\Movimientos\Salidas\Index as SalidasIndex;
+use App\Livewire\Movimientos\Prestamos\Index as PrestamosIndex;
+use App\Livewire\Movimientos\Devoluciones\Index as DevolucionesIndex;
 
 Route::middleware('guest')->group(function () {
 
@@ -101,6 +103,16 @@ Route::middleware('auth')->group(function () {
         '/movimientos/salidas',
         SalidasIndex::class
     )->name('movimientos.salidas');
+
+    Route::get(
+        '/movimientos/prestamos',
+        PrestamosIndex::class
+    )->name('movimientos.prestamos');
+
+    Route::get(
+        '/movimientos/devoluciones',
+        DevolucionesIndex::class
+    )->name('movimientos.devoluciones');
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');

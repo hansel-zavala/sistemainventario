@@ -62,4 +62,12 @@ class Equipo extends Model
             'equipo_id'
         );
     }
+
+    public function prestamos(): HasMany
+    {
+        return $this->hasMany(
+            PrestamoDetalle::class,
+            'equipo_id'
+        );
+}
 }

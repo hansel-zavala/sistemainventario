@@ -108,6 +108,20 @@
                         Salidas
                     </a>
 
+                    <a
+                        href="{{ route('movimientos.prestamos') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Préstamos
+                    </a>
+
+                    <a
+                        href="{{ route('movimientos.devoluciones') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                    >
+                        Devoluciones
+                    </a>
+
                 </div>
 
                 <div class="pt-3">
@@ -154,6 +168,13 @@
                 </div>
 
                 @role('Administrador')
+                <div class="pt-3">
+
+                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Administración
+                    </p>
+
+
 
                     <a
                         href="{{ route('administracion.usuarios') }}"
