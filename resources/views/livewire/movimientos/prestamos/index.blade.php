@@ -1,4 +1,3 @@
-
 <div>
     {{-- Encabezado --}}
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -7,7 +6,7 @@
                 Préstamos de activos
             </h1>
             <p class="mt-1 text-sm text-gray-500">
-                Control de herramientas y equipos tecnológicos prestados temporalmente.
+                Préstamos de herramientas individuales, herramientas por cantidad y equipos tecnológicos.
             </p>
         </div>
 
@@ -36,7 +35,7 @@
                 <input
                     type="text"
                     wire:model.live.debounce.300ms="buscar"
-                    placeholder="Persona, departamento, código o inventario..."
+                    placeholder="Persona, departamento, herramienta o inventario..."
                     class="w-full rounded-lg border border-gray-300 px-4 py-2"
                 >
             </div>
@@ -61,11 +60,12 @@
     {{-- Historial --}}
     <div class="space-y-4">
         @forelse ($prestamos as $prestamo)
-            <div wire:key="prestamo-{{ $prestamo->id }}"
-                 class="overflow-hidden rounded-xl bg-white shadow-sm">
-
+            <div
+                wire:key="prestamo-{{ $prestamo->id }}"
+                class="overflow-hidden rounded-xl bg-white shadow-sm"
+            >
                 <div class="border-b border-gray-200 bg-gray-50 px-6 py-4">
-                    <div class="flex flex-col justify-between gap-4 md:flex-row">
+                    <div class="flex flex-col justify-between gap-3 md:flex-row">
                         <div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <h2 class="font-semibold text-gray-800">
@@ -73,44 +73,40 @@
                                 </h2>
 
                                 @if ($prestamo->estado === 'completado')
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+                                    <span class="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
                                         Completado
                                     </span>
                                 @elseif ($prestamo->esta_vencido)
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+                                    <span class="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800">
                                         Vencido
                                     </span>
                                 @else
-                                    <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                    <span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
                                         Activo
                                     </span>
                                 @endif
                             </div>
 
                             <p class="mt-2 text-sm text-gray-600">
-                                <strong>Departamento:</strong>
+                                <strong>Destino:</strong>
                                 {{ $prestamo->departamentoDestino?->nombre ?? 'No disponible' }}
                             </p>
 
                             <p class="mt-1 text-sm text-gray-600">
-                                <strong>Persona que recibe:</strong>
+                                <strong>Recibe:</strong>
                                 {{ $prestamo->persona_recibe }}
                             </p>
                         </div>
 
                         <div class="space-y-1 text-sm text-gray-600 md:text-right">
                             <p>
-                                <strong>Prestado:</strong>
+                                <strong>Préstamo:</strong>
                                 {{ $prestamo->fecha_prestamo->format('d/m/Y h:i A') }}
                             </p>
-
                             <p>
                                 <strong>Devolución prevista:</strong>
-                                <span class="{{ $prestamo->esta_vencido ? 'font-semibold text-red-600' : '' }}">
-                                    {{ $prestamo->fecha_prevista_devolucion->format('d/m/Y h:i A') }}
-                                </span>
+                                {{ $prestamo->fecha_prevista_devolucion->format('d/m/Y h:i A') }}
                             </p>
-
                             <p>
                                 <strong>Registrado por:</strong>
                                 {{ $prestamo->usuario?->name ?? 'No disponible' }}
@@ -119,51 +115,71 @@
                     </div>
                 </div>
 
-                {{-- Detalles del préstamo --}}
                 <div class="overflow-x-auto">
                     <table class="w-full">
-                        <thead class="bg-white text-xs uppercase text-gray-500">
-                            <tr>
-                                <th class="px-6 py-3 text-left">Tipo</th>
-                                <th class="px-6 py-3 text-left">Activo</th>
-                                <th class="px-6 py-3 text-left">Código</th>
-                                <th class="px-6 py-3 text-left">Estado</th>
+                        <thead>
+                            <tr class="text-xs uppercase text-gray-500">
+                                <th class="px-5 py-3 text-left">Tipo</th>
+                                <th class="px-5 py-3 text-left">Activo</th>
+                                <th class="px-5 py-3 text-left">Código</th>
+                                <th class="px-5 py-3 text-right">Prestado</th>
+                                <th class="px-5 py-3 text-right">Devuelto</th>
+                                <th class="px-5 py-3 text-right">Pendiente</th>
+                                <th class="px-5 py-3 text-left">Estado</th>
                             </tr>
                         </thead>
 
                         <tbody class="divide-y divide-gray-100">
                             @foreach ($prestamo->detalles as $detalle)
+                                @php
+                                    $esEquipo = $detalle->equipo_id !== null;
+                                    $nombre = $esEquipo
+                                        ? trim(
+                                            ($detalle->equipo?->tipoEquipo?->nombre ?? 'Equipo')
+                                            . ' '
+                                            . ($detalle->equipo?->marca?->nombre ?? '')
+                                            . ' '
+                                            . ($detalle->equipo?->modelo ?? '')
+                                        )
+                                        : ($detalle->herramienta?->nombre ?? 'Herramienta no disponible');
+
+                                    $codigo = $esEquipo
+                                        ? $detalle->equipo?->numero_inventario
+                                        : $detalle->herramienta?->codigo_interno;
+                                @endphp
+
                                 <tr>
-                                    <td class="px-6 py-3 text-gray-600">
-                                        {{ $detalle->tipo_activo === 'equipo' ? 'Equipo' : 'Herramienta' }}
-                                    </td>
-
-                                    <td class="px-6 py-3">
-                                        @if ($detalle->tipo_activo === 'equipo')
-                                            <div class="font-medium text-gray-800">
-                                                {{ $detalle->equipo?->tipoEquipo?->nombre ?? 'Equipo' }}
-                                                {{ $detalle->equipo?->marca?->nombre }}
-                                                {{ $detalle->equipo?->modelo }}
-                                            </div>
+                                    <td class="px-5 py-3 text-sm text-gray-600">
+                                        @if ($esEquipo)
+                                            Equipo
+                                        @elseif ($detalle->herramienta?->tipo_control === 'cantidad')
+                                            Herramienta por cantidad
                                         @else
-                                            <div class="font-medium text-gray-800">
-                                                {{ $detalle->herramienta?->nombre ?? 'Herramienta no disponible' }}
-                                            </div>
-                                            <div class="text-sm text-gray-500">
-                                                {{ $detalle->herramienta?->marca?->nombre }}
-                                            </div>
+                                            Herramienta individual
                                         @endif
                                     </td>
 
-                                    <td class="px-6 py-3 text-gray-600">
-                                        @if ($detalle->tipo_activo === 'equipo')
-                                            {{ $detalle->equipo?->numero_inventario ?? '—' }}
-                                        @else
-                                            {{ $detalle->herramienta?->codigo_interno ?? '—' }}
-                                        @endif
+                                    <td class="px-5 py-3 font-medium text-gray-800">
+                                        {{ $nombre }}
                                     </td>
 
-                                    <td class="px-6 py-3">
+                                    <td class="px-5 py-3 text-gray-600">
+                                        {{ $codigo ?: '—' }}
+                                    </td>
+
+                                    <td class="px-5 py-3 text-right text-gray-600">
+                                        {{ number_format((float) $detalle->cantidad_prestada, 2, '.', '') }}
+                                    </td>
+
+                                    <td class="px-5 py-3 text-right text-gray-600">
+                                        {{ number_format((float) $detalle->cantidad_devuelta, 2, '.', '') }}
+                                    </td>
+
+                                    <td class="px-5 py-3 text-right font-semibold text-gray-800">
+                                        {{ number_format($detalle->cantidad_pendiente, 2, '.', '') }}
+                                    </td>
+
+                                    <td class="px-5 py-3">
                                         @if ($detalle->estado === 'devuelto')
                                             <span class="font-medium text-green-700">
                                                 Devuelto
@@ -181,7 +197,7 @@
                 </div>
 
                 @if ($prestamo->observaciones)
-                    <div class="border-t border-gray-100 px-6 py-4 text-sm text-gray-600">
+                    <div class="border-t border-gray-100 px-5 py-3 text-sm text-gray-600">
                         <strong>Observaciones:</strong>
                         {{ $prestamo->observaciones }}
                     </div>
@@ -198,18 +214,17 @@
         {{ $prestamos->links() }}
     </div>
 
-    {{-- Modal nuevo préstamo --}}
+    {{-- Modal --}}
     @if ($mostrarModal)
         <div class="fixed inset-0 z-50 overflow-y-auto bg-black/50 px-4 py-8">
-            <div class="mx-auto w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl">
-
-                <div class="mb-6 flex items-center justify-between">
+            <div class="mx-auto w-full max-w-5xl rounded-xl bg-white p-6 shadow-xl">
+                <div class="mb-6 flex items-center justify-between gap-4">
                     <div>
                         <h2 class="text-xl font-bold text-gray-800">
                             Nuevo préstamo de activos
                         </h2>
                         <p class="mt-1 text-sm text-gray-500">
-                            Registre los activos y la fecha y hora prevista de devolución.
+                            Registre herramientas y equipos que serán entregados temporalmente.
                         </p>
                     </div>
 
@@ -224,13 +239,13 @@
 
                 <form wire:submit="guardarPrestamo" class="space-y-6">
                     {{-- Datos generales --}}
-                    <section>
+                    <div>
                         <h3 class="font-semibold text-gray-800">
                             Datos del préstamo
                         </h3>
 
                         <p class="mb-4 mt-1 text-sm text-gray-500">
-                            Indique dónde se utilizarán los activos y quién se responsabiliza de recibirlos.
+                            Indique el departamento, responsable y fecha de devolución.
                         </p>
 
                         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -244,13 +259,9 @@
                                     class="w-full rounded-lg border border-gray-300 px-4 py-2"
                                 >
                                     <option value="">Seleccione...</option>
-
                                     @foreach ($departamentos as $departamento)
                                         <option value="{{ $departamento->id }}">
                                             {{ $departamento->nombre }}
-                                            @if ($departamento->sigla)
-                                                ({{ $departamento->sigla }})
-                                            @endif
                                         </option>
                                     @endforeach
                                 </select>
@@ -268,7 +279,7 @@
                                 <input
                                     type="text"
                                     wire:model="personaRecibe"
-                                    placeholder="Ej. Carlos Martínez"
+                                    placeholder="Nombre de la persona responsable"
                                     class="w-full rounded-lg border border-gray-300 px-4 py-2"
                                 >
 
@@ -288,28 +299,22 @@
                                     class="w-full rounded-lg border border-gray-300 px-4 py-2 md:max-w-sm"
                                 >
 
-                                <p class="mt-1 text-xs text-gray-500">
-                                    Puede programar la devolución para hoy o para otro día.
-                                    Debe ser una hora futura.
-                                </p>
-
                                 @error('fechaPrevistaDevolucion')
                                     <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>
                         </div>
-                    </section>
+                    </div>
 
-                    {{-- Activos --}}
-                    <section class="border-t border-gray-200 pt-5">
+                    {{-- Activos del préstamo --}}
+                    <div class="border-t border-gray-200 pt-5">
                         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <h3 class="font-semibold text-gray-800">
                                     Activos prestados
                                 </h3>
-
                                 <p class="mt-1 text-sm text-gray-500">
-                                    Puede agregar herramientas individuales y equipos tecnológicos.
+                                    Agregue una fila por cada activo diferente.
                                 </p>
                             </div>
 
@@ -323,7 +328,9 @@
                         </div>
 
                         @error('activosSeleccionados')
-                            <p class="mb-3 text-sm text-red-600">{{ $message }}</p>
+                            <p class="mb-3 text-sm text-red-600">
+                                {{ $message }}
+                            </p>
                         @enderror
 
                         <div class="space-y-4">
@@ -348,7 +355,7 @@
                                         @endif
                                     </div>
 
-                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
                                         {{-- Tipo --}}
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-gray-700">
@@ -360,8 +367,15 @@
                                                 class="w-full rounded-lg border border-gray-300 px-4 py-2"
                                             >
                                                 <option value="">Seleccione...</option>
-                                                <option value="herramienta">Herramienta individual</option>
-                                                <option value="equipo">Equipo tecnológico</option>
+                                                <option value="herramienta_individual">
+                                                    Herramienta individual
+                                                </option>
+                                                <option value="herramienta_cantidad">
+                                                    Herramienta por cantidad
+                                                </option>
+                                                <option value="equipo">
+                                                    Equipo tecnológico
+                                                </option>
                                             </select>
 
                                             @error("activosSeleccionados.$indice.tipo")
@@ -371,39 +385,45 @@
                                             @enderror
                                         </div>
 
-                                        {{-- Selección de activo --}}
+                                        {{-- Artículo --}}
                                         <div>
                                             <label class="mb-1 block text-sm font-medium text-gray-700">
                                                 Activo *
                                             </label>
 
                                             <select
-                                                wire:key="selector-activo-{{ $indice }}-{{ $activo['tipo'] }}"
+                                                wire:key="prestamo-selector-{{ $indice }}-{{ $activo['tipo'] }}"
                                                 wire:model="activosSeleccionados.{{ $indice }}.item_id"
                                                 class="w-full rounded-lg border border-gray-300 px-4 py-2"
                                                 @disabled(empty($activo['tipo']))
                                             >
-                                                <option value="">
-                                                    Seleccione un activo...
-                                                </option>
+                                                <option value="">Seleccione...</option>
 
-                                                @if ($activo['tipo'] === 'herramienta')
-                                                    @foreach ($herramientas as $herramienta)
+                                                @if ($activo['tipo'] === 'herramienta_individual')
+                                                    @foreach ($herramientasIndividuales as $herramienta)
                                                         <option value="{{ $herramienta->id }}">
                                                             {{ $herramienta->nombre }}
                                                             — {{ $herramienta->codigo_interno }}
-                                                            @if ($herramienta->marca)
-                                                                — {{ $herramienta->marca->nombre }}
-                                                            @endif
                                                         </option>
                                                     @endforeach
+
+                                                @elseif ($activo['tipo'] === 'herramienta_cantidad')
+                                                    @foreach ($herramientasCantidad as $herramienta)
+                                                        <option value="{{ $herramienta->id }}">
+                                                            {{ $herramienta->nombre }}
+                                                            — Disponible:
+                                                            {{ number_format($disponiblesCantidad[$herramienta->id], 2, '.', '') }}
+                                                            {{ $herramienta->unidadMedida?->nombre_plural ?? '' }}
+                                                        </option>
+                                                    @endforeach
+
                                                 @elseif ($activo['tipo'] === 'equipo')
                                                     @foreach ($equipos as $equipo)
                                                         <option value="{{ $equipo->id }}">
-                                                            {{ $equipo->tipoEquipo?->nombre }}
+                                                            {{ $equipo->tipoEquipo?->nombre ?? 'Equipo' }}
                                                             — {{ $equipo->marca?->nombre }}
                                                             {{ $equipo->modelo }}
-                                                            — Inv. {{ $equipo->numero_inventario }}
+                                                            — {{ $equipo->numero_inventario }}
                                                         </option>
                                                     @endforeach
                                                 @endif
@@ -415,14 +435,50 @@
                                                 </p>
                                             @enderror
                                         </div>
+
+                                        {{-- Cantidad --}}
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-gray-700">
+                                                Cantidad a prestar *
+                                            </label>
+
+                                            @if ($activo['tipo'] === 'herramienta_cantidad')
+                                                <input
+                                                    type="number"
+                                                    min="0.01"
+                                                    step="0.01"
+                                                    wire:model="activosSeleccionados.{{ $indice }}.cantidad"
+                                                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
+                                                >
+                                                <p class="mt-1 text-xs text-gray-500">
+                                                    La cantidad disponible se valida al guardar.
+                                                </p>
+                                            @else
+                                                <input
+                                                    type="number"
+                                                    value="1"
+                                                    readonly
+                                                    class="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-2 text-gray-600"
+                                                >
+                                                <p class="mt-1 text-xs text-gray-500">
+                                                    Se presta una unidad por registro.
+                                                </p>
+                                            @endif
+
+                                            @error("activosSeleccionados.$indice.cantidad")
+                                                <p class="mt-1 text-sm text-red-600">
+                                                    {{ $message }}
+                                                </p>
+                                            @enderror
+                                        </div>
                                     </div>
                                 </div>
                             @endforeach
                         </div>
-                    </section>
+                    </div>
 
                     {{-- Observaciones --}}
-                    <section>
+                    <div>
                         <label class="mb-1 block text-sm font-medium text-gray-700">
                             Observaciones
                         </label>
@@ -430,14 +486,16 @@
                         <textarea
                             wire:model="observaciones"
                             rows="3"
-                            placeholder="Ej. Activos prestados para una reunión en Catastro."
+                            placeholder="Ej. Herramientas entregadas para trabajos de mantenimiento."
                             class="w-full rounded-lg border border-gray-300 px-4 py-2"
                         ></textarea>
 
                         @error('observaciones')
-                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            <p class="mt-1 text-sm text-red-600">
+                                {{ $message }}
+                            </p>
                         @enderror
-                    </section>
+                    </div>
 
                     <div class="flex justify-end gap-3 border-t border-gray-100 pt-5">
                         <button

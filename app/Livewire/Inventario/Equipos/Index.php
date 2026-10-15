@@ -49,12 +49,10 @@ class Index extends Component
 
     public string $observaciones = '';
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
-
 
     public function crearEquipo(): void
     {
@@ -62,7 +60,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarEquipo(int $id): void
     {
@@ -101,7 +98,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function cerrarModal(): void
     {
@@ -167,14 +163,11 @@ class Index extends Component
     protected function messagesCatalogoRapido(): array
     {
         return [
-            'nuevoNombreCatalogo.required' =>
-                'El nombre es obligatorio.',
+            'nuevoNombreCatalogo.required' => 'El nombre es obligatorio.',
 
-            'nuevoNombreCatalogo.max' =>
-                'El nombre no puede superar los 150 caracteres.',
+            'nuevoNombreCatalogo.max' => 'El nombre no puede superar los 150 caracteres.',
 
-            'nuevaSiglaDepartamento.max' =>
-                'La sigla no puede superar los 20 caracteres.',
+            'nuevaSiglaDepartamento.max' => 'La sigla no puede superar los 20 caracteres.',
         ];
     }
 
@@ -216,7 +209,6 @@ class Index extends Component
             $this->categoriaId = (string) $categoria->id;
         }
 
-
         if ($this->tipoCatalogo === 'tipo_equipo') {
 
             $duplicado = TipoEquipo::query()
@@ -243,7 +235,6 @@ class Index extends Component
 
             $this->tipoEquipoId = (string) $tipoEquipo->id;
         }
-
 
         if ($this->tipoCatalogo === 'departamento') {
 
@@ -278,7 +269,6 @@ class Index extends Component
                 (string) $departamento->id;
         }
 
-
         if ($this->tipoCatalogo === 'marca') {
 
             $duplicada = Marca::query()
@@ -306,7 +296,6 @@ class Index extends Component
             $this->marcaId = (string) $marca->id;
         }
 
-
         $this->cerrarModalCatalogo();
 
         session()->flash(
@@ -328,7 +317,6 @@ class Index extends Component
         $this->numeroInventario = '';
         $this->observaciones = '';
     }
-
 
     protected function rules(): array
     {
@@ -385,54 +373,38 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'categoriaId.required' =>
-                'Debe seleccionar una categoría.',
+            'categoriaId.required' => 'Debe seleccionar una categoría.',
 
-            'categoriaId.exists' =>
-                'La categoría seleccionada no es válida.',
+            'categoriaId.exists' => 'La categoría seleccionada no es válida.',
 
-            'tipoEquipoId.required' =>
-                'Debe seleccionar un tipo de equipo.',
+            'tipoEquipoId.required' => 'Debe seleccionar un tipo de equipo.',
 
-            'tipoEquipoId.exists' =>
-                'El tipo de equipo seleccionado no es válido.',
+            'tipoEquipoId.exists' => 'El tipo de equipo seleccionado no es válido.',
 
-            'departamentoId.required' =>
-                'Debe seleccionar el departamento de procedencia.',
+            'departamentoId.required' => 'Debe seleccionar el departamento de procedencia.',
 
-            'departamentoId.exists' =>
-                'El departamento seleccionado no es válido.',
+            'departamentoId.exists' => 'El departamento seleccionado no es válido.',
 
-            'marcaId.required' =>
-                'Debe seleccionar una marca.',
+            'marcaId.required' => 'Debe seleccionar una marca.',
 
-            'marcaId.exists' =>
-                'La marca seleccionada no es válida.',
+            'marcaId.exists' => 'La marca seleccionada no es válida.',
 
-            'modelo.max' =>
-                'El modelo no puede superar los 100 caracteres.',
+            'modelo.max' => 'El modelo no puede superar los 100 caracteres.',
 
-            'color.max' =>
-                'El color no puede superar los 50 caracteres.',
+            'color.max' => 'El color no puede superar los 50 caracteres.',
 
-            'numeroSerie.max' =>
-                'El número de serie no puede superar los 100 caracteres.',
+            'numeroSerie.max' => 'El número de serie no puede superar los 100 caracteres.',
 
-            'numeroInventario.required' =>
-                'El número de inventario es obligatorio.',
+            'numeroInventario.required' => 'El número de inventario es obligatorio.',
 
-            'numeroInventario.max' =>
-                'El número de inventario no puede superar los 100 caracteres.',
+            'numeroInventario.max' => 'El número de inventario no puede superar los 100 caracteres.',
 
-            'observaciones.max' =>
-                'Las observaciones no pueden superar los 2000 caracteres.',
+            'observaciones.max' => 'Las observaciones no pueden superar los 2000 caracteres.',
         ];
     }
-
 
     public function guardarEquipo(): void
     {
@@ -443,7 +415,6 @@ class Index extends Component
 
         $numeroSerie =
             trim($this->numeroSerie);
-
 
         $inventarioDuplicado = Equipo::query()
             ->whereRaw(
@@ -470,7 +441,6 @@ class Index extends Component
 
             return;
         }
-
 
         if ($numeroSerie !== '') {
 
@@ -501,44 +471,33 @@ class Index extends Component
             }
         }
 
-
         $datos = [
-            'categoria_id' =>
-                (int) $this->categoriaId,
+            'categoria_id' => (int) $this->categoriaId,
 
-            'tipo_equipo_id' =>
-                (int) $this->tipoEquipoId,
+            'tipo_equipo_id' => (int) $this->tipoEquipoId,
 
-            'departamento_id' =>
-                (int) $this->departamentoId,
+            'departamento_id' => (int) $this->departamentoId,
 
-            'marca_id' =>
-                (int) $this->marcaId,
+            'marca_id' => (int) $this->marcaId,
 
-            'modelo' =>
-                trim($this->modelo) !== ''
+            'modelo' => trim($this->modelo) !== ''
                     ? trim($this->modelo)
                     : null,
 
-            'color' =>
-                trim($this->color) !== ''
+            'color' => trim($this->color) !== ''
                     ? trim($this->color)
                     : null,
 
-            'numero_serie' =>
-                $numeroSerie !== ''
+            'numero_serie' => $numeroSerie !== ''
                     ? $numeroSerie
                     : null,
 
-            'numero_inventario' =>
-                $numeroInventario,
+            'numero_inventario' => $numeroInventario,
 
-            'observaciones' =>
-                trim($this->observaciones) !== ''
+            'observaciones' => trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
         ];
-
 
         if ($this->equipoId === null) {
 
@@ -565,12 +524,10 @@ class Index extends Component
             );
         }
 
-
         $this->cerrarModal();
 
         $this->resetPage();
     }
-
 
     public function render()
     {
@@ -583,12 +540,18 @@ class Index extends Component
                 'creador',
             ])
 
+            ->withExists([
+                'prestamos as esta_prestado' => function ($query) {
+                    $query->where('estado', 'prestado');
+                },
+            ])
+
             ->when(
                 $this->buscar,
                 function ($query) {
 
                     $buscar =
-                        '%' . trim($this->buscar) . '%';
+                        '%'.trim($this->buscar).'%';
 
                     $query->where(
                         function ($subQuery) use ($buscar) {
@@ -637,31 +600,26 @@ class Index extends Component
             ->latest()
             ->paginate(10);
 
-
         $categorias = Categoria::query()
             ->where('activo', true)
             ->where('aplica_a', 'equipo')
             ->orderBy('nombre')
             ->get();
 
-
         $tiposEquipo = TipoEquipo::query()
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
-
 
         $departamentos = Departamento::query()
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
 
-
         $marcas = Marca::query()
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
-
 
         return view(
             'livewire.inventario.equipos.index',

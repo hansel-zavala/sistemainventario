@@ -31,6 +31,11 @@
 
     @endif
 
+    @error('estadoHerramienta')
+        <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {{ $message }}
+        </div>
+    @enderror
 
     {{-- Filtros --}}
     <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
@@ -124,6 +129,10 @@
                             Existencia
                         </th>
 
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            Disponibilidad
+                        </th>
+
                         <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
                             Estado
                         </th>
@@ -215,6 +224,77 @@
                                 @endif
 
                             </td>
+
+                            
+                            <td class="px-4 py-3">
+
+                                @if (! $herramienta->activo)
+
+                                    <span class="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                                        Inactiva
+                                    </span>
+
+                                @elseif ($herramienta->tipo_control === 'individual')
+
+                                    @if ($herramienta->esta_prestada)
+
+                                        <span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                                            Prestada
+                                        </span>
+
+                                    @else
+
+                                        <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                                            Disponible
+                                        </span>
+
+                                    @endif
+
+                                @else
+
+                                    @php
+                                        $prestadas = (float) $herramienta->cantidad_prestada_pendiente;
+                                        $disponibles = (float) $herramienta->cantidad_disponible_calculada;
+                                    @endphp
+
+                                    <div class="space-y-1">
+
+                                        @if ($disponibles > 0)
+
+                                            <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                                                {{ number_format($disponibles, 2, '.', '') }}
+                                                disponibles
+                                            </span>
+
+                                        @else
+
+                                            <span class="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800">
+                                                Sin disponibilidad
+                                            </span>
+
+                                        @endif
+
+                                        @if ($prestadas > 0)
+
+                                            <div class="text-xs font-medium text-amber-700">
+                                                {{ number_format($prestadas, 2, '.', '') }}
+                                                prestadas
+                                            </div>
+
+                                        @else
+
+                                            <div class="text-xs text-gray-500">
+                                                Sin préstamos pendientes
+                                            </div>
+
+                                        @endif
+
+                                    </div>
+
+                                @endif
+
+                            </td>
+
 
 
                             <td class="px-5 py-4">
@@ -506,18 +586,20 @@
                         </div>
 
 
-                        {{-- Tipo control --}}
+                        {{-- Tipo de control --}}
                         <div>
-
                             <label class="mb-1 block text-sm font-medium text-gray-700">
                                 Tipo de control *
                             </label>
 
                             <select
                                 wire:model.live="tipoControl"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
+                                @disabled($herramientaId !== null)
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2
+                                    {{ $herramientaId !== null
+                                        ? 'cursor-not-allowed bg-gray-100 text-gray-600'
+                                        : '' }}"
                             >
-
                                 <option value="individual">
                                     Individual
                                 </option>
@@ -525,25 +607,29 @@
                                 <option value="cantidad">
                                     Por cantidad
                                 </option>
-
                             </select>
 
-                            <p class="mt-1 text-xs text-gray-500">
+                            @if ($herramientaId !== null)
+                                <p class="mt-1 text-xs text-gray-500">
+                                    El tipo de control no puede modificarse después
+                                    de registrar la herramienta.
+                                </p>
+                            @else
+                                <p class="mt-1 text-xs text-gray-500">
+                                    @if ($tipoControl === 'individual')
+                                        Para herramientas identificadas mediante un código propio.
+                                    @else
+                                        Para herramientas iguales controladas por existencias.
+                                    @endif
+                                </p>
+                            @endif
 
-                                @if ($tipoControl === 'individual')
-
-                                    Para herramientas que se controlan una por una.
-
-                                @else
-
-                                    Para herramientas iguales controladas mediante existencias.
-
-                                @endif
-
-                            </p>
-
+                            @error('tipoControl')
+                                <p class="mt-1 text-sm font-medium text-red-600">
+                                    {{ $message }}
+                                </p>
+                            @enderror
                         </div>
-
 
                         {{-- Código --}}
                         <div>
@@ -583,13 +669,19 @@
                                     Cantidad actual *
                                 </label>
 
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    wire:model="cantidadActual"
-                                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                                >
+                                <input type="number"
+                                wire:model="cantidadActual"
+                                min="0"
+                                step="0.01"
+                                @readonly($herramientaId !== null)
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2
+                                {{ $herramientaId !== null ? 'bg-gray-100 text-gray-500' : '' }}">
+
+                                @if ($herramientaId !== null)
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Las existencias se modifican desde Movimientos → Entradas o Salidas.
+                                    </p>
+                                @endif
 
                                 @error('cantidadActual')
                                     <p class="mt-1 text-sm text-red-600">
@@ -665,24 +757,31 @@
                     </div>
 
 
-                    {{-- Activa --}}
-                    <div class="flex items-center">
+                    {{-- Estado de la herramienta --}}
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <input
+                                id="activoHerramienta"
+                                type="checkbox"
+                                wire:model="activoHerramienta"
+                                class="rounded border-gray-300"
+                            >
 
-                        <input
-                            id="activoHerramienta"
-                            type="checkbox"
-                            wire:model="activoHerramienta"
-                            class="rounded border-gray-300"
-                        >
+                            <label
+                                for="activoHerramienta"
+                                class="text-sm text-gray-700"
+                            >
+                                Herramienta activa
+                            </label>
+                        </div>
 
-                        <label
-                            for="activoHerramienta"
-                            class="ml-2 text-sm text-gray-700"
-                        >
-                            Herramienta activa
-                        </label>
-
+                        @error('activoHerramienta')
+                            <p class="mt-2 text-sm font-medium text-red-600">
+                                {{ $message }}
+                            </p>
+                        @enderror
                     </div>
+
 
 
                     <div class="flex justify-end gap-3 border-t border-gray-100 pt-5">

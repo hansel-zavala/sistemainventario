@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PrestamoDetalle extends Model
 {
@@ -17,6 +18,8 @@ class PrestamoDetalle extends Model
         'prestamo_id',
         'herramienta_id',
         'equipo_id',
+        'cantidad_prestada',
+        'cantidad_devuelta',
         'estado',
         'fecha_devolucion',
         'recibido_por',
@@ -26,6 +29,8 @@ class PrestamoDetalle extends Model
     protected function casts(): array
     {
         return [
+            'cantidad_prestada' => 'decimal:2',
+            'cantidad_devuelta' => 'decimal:2',
             'fecha_devolucion' => 'datetime',
         ];
     }
@@ -72,5 +77,25 @@ class PrestamoDetalle extends Model
         return $this->equipo_id !== null
             ? 'equipo'
             : 'herramienta';
+    }
+
+    public function devoluciones(): HasMany
+    {
+        return $this->hasMany(
+            PrestamoDevolucion::class,
+            'prestamo_detalle_id'
+        );
+    }
+
+    public function getCantidadPendienteAttribute(): float
+    {
+        return max(
+            0,
+            round(
+                (float) $this->cantidad_prestada
+                - (float) $this->cantidad_devuelta,
+                2
+            )
+        );
     }
 }

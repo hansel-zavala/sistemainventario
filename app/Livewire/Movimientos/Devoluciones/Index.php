@@ -4,6 +4,7 @@ namespace App\Livewire\Movimientos\Devoluciones;
 
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
+use App\Models\PrestamoDevolucion;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,15 +18,17 @@ class Index extends Component
     use WithPagination;
 
     public string $buscar = '';
+
     public string $filtroEstado = 'pendientes';
 
     public bool $mostrarModal = false;
+
     public ?int $prestamoId = null;
 
-    // Claves: ID del detalle. Valores: true/false.
     public array $seleccionados = [];
 
-    // Observaciones individuales de devolución.
+    public array $cantidades = [];
+
     public array $observacionesDetalle = [];
 
     public function updatingBuscar(): void
@@ -43,15 +46,27 @@ class Index extends Component
         $prestamo = Prestamo::query()
             ->whereKey($id)
             ->where('estado', 'activo')
-            ->whereHas(
-                'detalles',
-                fn ($query) => $query->where('estado', 'prestado')
-            )
+            ->whereHas('detalles', function ($query) {
+                $query->where('estado', 'prestado');
+            })
+            ->with([
+                'detalles' => fn ($query) => $query->where('estado', 'prestado'),
+            ])
             ->firstOrFail();
 
         $this->prestamoId = $prestamo->id;
         $this->seleccionados = [];
+        $this->cantidades = [];
         $this->observacionesDetalle = [];
+
+        foreach ($prestamo->detalles as $detalle) {
+            $this->seleccionados[$detalle->id] = false;
+
+            $this->cantidades[$detalle->id] =
+                $detalle->cantidad_pendiente == 1
+                    ? '1'
+                    : '';
+        }
 
         $this->resetValidation();
         $this->mostrarModal = true;
@@ -62,6 +77,7 @@ class Index extends Component
         $this->mostrarModal = false;
         $this->prestamoId = null;
         $this->seleccionados = [];
+        $this->cantidades = [];
         $this->observacionesDetalle = [];
 
         $this->resetValidation();
@@ -70,55 +86,50 @@ class Index extends Component
     protected function rules(): array
     {
         return [
-            'seleccionados' => [
-                'required',
-                'array',
-            ],
-
-            'seleccionados.*' => [
-                'boolean',
-            ],
-
-            'observacionesDetalle' => [
-                'array',
-            ],
-
-            'observacionesDetalle.*' => [
-                'nullable',
-                'string',
-                'max:1000',
-            ],
+            'seleccionados' => ['required', 'array'],
+            'seleccionados.*' => ['boolean'],
+            'cantidades' => ['array'],
+            'cantidades.*' => ['nullable', 'numeric', 'gt:0', 'decimal:0,2'],
+            'observacionesDetalle' => ['array'],
+            'observacionesDetalle.*' => ['nullable', 'string', 'max:1000'],
         ];
     }
 
     protected function messages(): array
     {
         return [
-            'seleccionados.array' =>
-                'La selección de activos no es válida.',
-
-            'seleccionados.*.boolean' =>
-                'La selección de uno de los activos no es válida.',
-
-            'observacionesDetalle.*.max' =>
-                'Las observaciones no pueden superar 1000 caracteres.',
+            'cantidades.*.numeric' => 'Ingrese una cantidad válida.',
+            'cantidades.*.gt' => 'La cantidad debe ser mayor que cero.',
+            'cantidades.*.decimal' => 'Solo se permiten hasta dos decimales.',
+            'observacionesDetalle.*.max' => 'Las observaciones no pueden superar 1000 caracteres.',
         ];
     }
 
     public function guardarDevolucion(): void
     {
-        $this->validate();
-
         if ($this->prestamoId === null) {
             $this->addError(
                 'seleccionados',
-                'No se ha seleccionado un préstamo.'
+                'Debe seleccionar un préstamo.'
             );
 
             return;
         }
 
-        $idsSeleccionados = collect($this->seleccionados)
+        /*
+         * Validar únicamente las cantidades seleccionadas.
+         * Los campos de los activos no seleccionados se ignoran.
+         */
+        $this->validate([
+            'seleccionados' => ['required', 'array'],
+            'seleccionados.*' => ['boolean'],
+            'observacionesDetalle' => ['array'],
+            'observacionesDetalle.*' => [
+                'nullable', 'string', 'max:1000',
+            ],
+        ]);
+
+        $ids = collect($this->seleccionados)
             ->filter(fn ($valor) => $valor === true)
             ->keys()
             ->map(fn ($id) => (int) $id)
@@ -127,7 +138,7 @@ class Index extends Component
             ->values()
             ->all();
 
-        if (count($idsSeleccionados) === 0) {
+        if (count($ids) === 0) {
             $this->addError(
                 'seleccionados',
                 'Seleccione al menos un activo para devolver.'
@@ -136,11 +147,49 @@ class Index extends Component
             return;
         }
 
-        DB::transaction(function () use ($idsSeleccionados) {
+        $cantidadesValidadas = [];
+
+        foreach ($ids as $id) {
+            $valor = $this->cantidades[$id] ?? null;
+
+            $validador = validator(
+                ['cantidad' => $valor],
+                [
+                    'cantidad' => [
+                        'required',
+                        'numeric',
+                        'gt:0',
+                        'decimal:0,2',
+                    ],
+                ]
+            );
+
+            if ($validador->fails()) {
+                $this->addError(
+                    "cantidades.$id",
+                    'Ingrese una cantidad positiva de hasta dos decimales.'
+                );
+
+                continue;
+            }
+
+            $cantidadesValidadas[$id] = round(
+                (float) $valor,
+                2
+            );
+        }
+
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
+        }
+
+        DB::transaction(function () use (
+            $ids,
+            $cantidadesValidadas
+        ) {
             /*
-             * Bloqueamos primero el préstamo.
-             * Así evitamos procesar simultáneamente
-             * dos devoluciones del mismo préstamo.
+             * Un solo usuario procesa este préstamo
+             * a la vez.
              */
             $prestamo = Prestamo::query()
                 ->whereKey($this->prestamoId)
@@ -149,56 +198,118 @@ class Index extends Component
 
             if (! $prestamo || $prestamo->estado !== 'activo') {
                 throw ValidationException::withMessages([
-                    'seleccionados' =>
-                        'El préstamo ya no se encuentra activo.',
+                    'seleccionados' => 'El préstamo ya no está activo.',
                 ]);
             }
 
-            /*
-             * Recuperamos y bloqueamos únicamente
-             * los detalles pendientes seleccionados.
-             */
             $detalles = PrestamoDetalle::query()
                 ->where('prestamo_id', $prestamo->id)
-                ->whereIn('id', $idsSeleccionados)
+                ->whereIn('id', $ids)
                 ->where('estado', 'prestado')
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
 
-            if ($detalles->count() !== count($idsSeleccionados)) {
+            if ($detalles->count() !== count($ids)) {
                 throw ValidationException::withMessages([
-                    'seleccionados' =>
-                        'Uno de los activos ya fue devuelto o no pertenece al préstamo.',
+                    'seleccionados' => 'Uno de los activos ya fue devuelto o no pertenece a este préstamo.',
                 ]);
             }
 
-            $fechaDevolucion = now();
+            $fecha = now();
 
             foreach ($detalles as $detalle) {
-                $observacion = trim(
-                    $this->observacionesDetalle[$detalle->id] ?? ''
+                $cantidad = $cantidadesValidadas[$detalle->id];
+                $pendiente = $detalle->cantidad_pendiente;
+
+                if ($cantidad > $pendiente) {
+                    throw ValidationException::withMessages([
+                        "cantidades.{$detalle->id}" => "Solo quedan {$pendiente} unidades pendientes.",
+                    ]);
+                }
+
+                $esPorCantidad =
+                    $detalle->herramienta_id !== null
+                    && $detalle->herramienta?->tipo_control === 'cantidad';
+
+                /*
+                 * Equipos y herramientas individuales
+                 * solo admiten devoluciones de 1 unidad.
+                 */
+                if (
+                    ! $esPorCantidad
+                    && abs($cantidad - 1) > 0.00001
+                ) {
+                    throw ValidationException::withMessages([
+                        "cantidades.{$detalle->id}" => 'Este activo debe devolverse como una unidad.',
+                    ]);
+                }
+
+                if ($esPorCantidad) {
+                    $detalle->load('herramienta.unidadMedida');
+
+                    $permiteDecimales =
+                        (bool) $detalle->herramienta
+                            ?->unidadMedida?->permite_decimales;
+
+                    if (
+                        ! $permiteDecimales
+                        && abs($cantidad - round($cantidad)) > 0.00001
+                    ) {
+                        throw ValidationException::withMessages([
+                            "cantidades.{$detalle->id}" => 'La unidad de medida no permite decimales.',
+                        ]);
+                    }
+                }
+
+                $nuevaCantidadDevuelta = round(
+                    (float) $detalle->cantidad_devuelta
+                    + $cantidad,
+                    2
                 );
 
+                $completado = $nuevaCantidadDevuelta >=
+                    (float) $detalle->cantidad_prestada;
+
+                $observaciones = trim(
+                    (string) (
+                        $this->observacionesDetalle[$detalle->id]
+                        ?? ''
+                    )
+                );
+
+                /*
+                 * Guardar el evento independiente.
+                 */
+                PrestamoDevolucion::create([
+                    'prestamo_detalle_id' => $detalle->id,
+                    'cantidad' => $cantidad,
+                    'fecha_devolucion' => $fecha,
+                    'recibido_por' => Auth::id(),
+                    'observaciones' => $observaciones !== ''
+                            ? $observaciones
+                            : null,
+                ]);
+
+                /*
+                 * Actualizar los acumulados.
+                 */
                 $detalle->update([
-                    'estado' => 'devuelto',
-
-                    'fecha_devolucion' =>
-                        $fechaDevolucion,
-
-                    'recibido_por' =>
-                        Auth::id(),
-
-                    'observaciones_devolucion' =>
-                        $observacion !== ''
-                            ? $observacion
+                    'cantidad_devuelta' => $nuevaCantidadDevuelta,
+                    'estado' => $completado ? 'devuelto' : 'prestado',
+                    'fecha_devolucion' => $completado ? $fecha : null,
+                    'recibido_por' => $completado ? Auth::id() : null,
+                    'observaciones_devolucion' => $completado
+                            ? ($observaciones !== ''
+                                ? $observaciones
+                                : null)
                             : null,
                 ]);
             }
 
             /*
-             * Si no queda ningún activo prestado,
-             * el préstamo pasa a Completado.
+             * El préstamo solo se completa
+             * cuando todos sus detalles están devueltos.
              */
             $quedanPendientes = PrestamoDetalle::query()
                 ->where('prestamo_id', $prestamo->id)
@@ -230,9 +341,8 @@ class Index extends Component
                 'detalles.herramienta.marca',
                 'detalles.equipo.marca',
                 'detalles.equipo.tipoEquipo',
-                'detalles.usuarioRecibe',
+                'detalles.devoluciones.usuario',
             ])
-
             ->when(
                 $this->filtroEstado === 'pendientes',
                 fn ($query) => $query
@@ -242,77 +352,58 @@ class Index extends Component
                         fn ($q) => $q->where('estado', 'prestado')
                     )
             )
-
             ->when(
                 $this->filtroEstado === 'completados',
                 fn ($query) => $query
                     ->where('estado', 'completado')
             )
-
             ->when(
-                $this->buscar !== '',
+                trim($this->buscar) !== '',
                 function ($query) {
-                    $buscar = '%' . trim($this->buscar) . '%';
+                    $buscar = '%'.trim($this->buscar).'%';
 
                     $query->where(function ($q) use ($buscar) {
                         $q->where('persona_recibe', 'like', $buscar)
-
                             ->orWhereHas(
                                 'departamentoDestino',
                                 fn ($d) => $d->where(
-                                    'nombre',
-                                    'like',
-                                    $buscar
+                                    'nombre', 'like', $buscar
                                 )
                             )
-
                             ->orWhereHas(
                                 'detalles.herramienta',
-                                function ($h) use ($buscar) {
-                                    $h->where('nombre', 'like', $buscar)
-                                        ->orWhere(
-                                            'codigo_interno',
-                                            'like',
-                                            $buscar
-                                        );
-                                }
+                                fn ($h) => $h
+                                    ->where('nombre', 'like', $buscar)
+                                    ->orWhere('codigo_interno', 'like', $buscar)
                             )
-
                             ->orWhereHas(
                                 'detalles.equipo',
-                                function ($e) use ($buscar) {
-                                    $e->where(
+                                fn ($e) => $e
+                                    ->where(
                                         'numero_inventario',
                                         'like',
                                         $buscar
-                                    )->orWhere(
+                                    )
+                                    ->orWhere(
                                         'modelo',
                                         'like',
                                         $buscar
-                                    );
-                                }
+                                    )
                             );
                     });
                 }
             )
-
             ->latest('fecha_prestamo')
             ->paginate(10);
 
-        /*
-         * Cargamos aparte el préstamo del modal.
-         * Solo incluimos activos pendientes.
-         */
         $prestamoSeleccionado = null;
 
-        if ($this->mostrarModal && $this->prestamoId) {
+        if ($this->mostrarModal && $this->prestamoId !== null) {
             $prestamoSeleccionado = Prestamo::query()
                 ->with([
                     'departamentoDestino',
-                    'detalles' => fn ($query) => $query
-                        ->where('estado', 'prestado'),
-
-                    'detalles.herramienta.marca',
+                    'detalles' => fn ($query) => $query->where('estado', 'prestado'),
+                    'detalles.herramienta.unidadMedida',
                     'detalles.equipo.marca',
                     'detalles.equipo.tipoEquipo',
                 ])

@@ -21,13 +21,17 @@ class Index extends Component
     use WithPagination;
 
     public string $buscar = '';
+
     public string $filtroEstado = '';
 
     public bool $mostrarModal = false;
 
     public string $departamentoDestinoId = '';
+
     public string $personaRecibe = '';
+
     public string $fechaPrevistaDevolucion = '';
+
     public string $observaciones = '';
 
     public array $activosSeleccionados = [];
@@ -46,7 +50,6 @@ class Index extends Component
     {
         $this->resetFormulario();
         $this->resetValidation();
-
         $this->agregarActivo();
         $this->mostrarModal = true;
     }
@@ -54,8 +57,8 @@ class Index extends Component
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
-        $this->resetValidation();
         $this->resetFormulario();
+        $this->resetValidation();
     }
 
     private function resetFormulario(): void
@@ -72,6 +75,7 @@ class Index extends Component
         $this->activosSeleccionados[] = [
             'tipo' => '',
             'item_id' => '',
+            'cantidad' => '1',
         ];
     }
 
@@ -99,6 +103,7 @@ class Index extends Component
 
             if (isset($this->activosSeleccionados[$indice])) {
                 $this->activosSeleccionados[$indice]['item_id'] = '';
+                $this->activosSeleccionados[$indice]['cantidad'] = '1';
             }
         }
     }
@@ -107,44 +112,30 @@ class Index extends Component
     {
         return [
             'departamentoDestinoId' => [
-                'required',
-                'integer',
-                'exists:departamentos,id',
+                'required', 'integer', 'exists:departamentos,id',
             ],
-
             'personaRecibe' => [
-                'required',
-                'string',
-                'max:150',
+                'required', 'string', 'max:150',
             ],
-
             'fechaPrevistaDevolucion' => [
-                'required',
-                'date_format:Y-m-d\TH:i',
+                'required', 'date_format:Y-m-d\TH:i',
             ],
-
             'observaciones' => [
-                'nullable',
-                'string',
-                'max:2000',
+                'nullable', 'string', 'max:2000',
             ],
-
             'activosSeleccionados' => [
-                'required',
-                'array',
-                'min:1',
-                'max:30',
+                'required', 'array', 'min:1', 'max:30',
             ],
-
             'activosSeleccionados.*.tipo' => [
                 'required',
-                'in:herramienta,equipo',
+                'in:herramienta_individual,herramienta_cantidad,equipo',
             ],
-
             'activosSeleccionados.*.item_id' => [
-                'required',
-                'integer',
-                'min:1',
+                'required', 'integer', 'min:1',
+            ],
+            'activosSeleccionados.*.cantidad' => [
+                'required', 'numeric', 'gt:0',
+                'decimal:0,2',
             ],
         ];
     }
@@ -152,191 +143,254 @@ class Index extends Component
     protected function messages(): array
     {
         return [
-            'departamentoDestinoId.required' =>
-                'Debe seleccionar el departamento destino.',
-
-            'departamentoDestinoId.exists' =>
-                'El departamento seleccionado no es válido.',
-
-            'personaRecibe.required' =>
-                'Debe indicar la persona que recibe los activos.',
-
-            'fechaPrevistaDevolucion.required' =>
-                'Debe indicar fecha y hora de devolución.',
-
-            'fechaPrevistaDevolucion.date_format' =>
-                'Ingrese una fecha y hora válidas.',
-
-            'activosSeleccionados.min' =>
-                'Debe agregar al menos un activo.',
-
-            'activosSeleccionados.max' =>
-                'Puede agregar un máximo de 30 activos.',
-
-            'activosSeleccionados.*.tipo.required' =>
-                'Seleccione el tipo de activo.',
-
-            'activosSeleccionados.*.tipo.in' =>
-                'El tipo seleccionado no es válido.',
-
-            'activosSeleccionados.*.item_id.required' =>
-                'Seleccione un activo.',
-
-            'activosSeleccionados.*.item_id.integer' =>
-                'El activo seleccionado no es válido.',
+            'departamentoDestinoId.required' => 'Seleccione el departamento destino.',
+            'departamentoDestinoId.exists' => 'El departamento seleccionado no es válido.',
+            'personaRecibe.required' => 'Ingrese la persona responsable del préstamo.',
+            'fechaPrevistaDevolucion.required' => 'Indique la fecha y hora prevista de devolución.',
+            'fechaPrevistaDevolucion.date_format' => 'La fecha y hora no tienen un formato válido.',
+            'activosSeleccionados.*.tipo.required' => 'Seleccione el tipo de activo.',
+            'activosSeleccionados.*.item_id.required' => 'Seleccione el activo.',
+            'activosSeleccionados.*.cantidad.required' => 'Ingrese la cantidad.',
+            'activosSeleccionados.*.cantidad.gt' => 'La cantidad debe ser mayor que cero.',
+            'activosSeleccionados.*.cantidad.decimal' => 'La cantidad admite hasta dos decimales.',
         ];
+    }
+
+    private function campoErrorActivo(
+        string $tipo,
+        int $id
+    ): string {
+        foreach ($this->activosSeleccionados as $indice => $activo) {
+            if (
+                $activo['tipo'] === $tipo
+                && (int) $activo['item_id'] === $id
+            ) {
+                return "activosSeleccionados.$indice.cantidad";
+            }
+        }
+
+        return 'activosSeleccionados';
+    }
+
+    private function pendienteHerramienta(int $id): float
+    {
+        return round(
+            (float) PrestamoDetalle::query()
+                ->where('herramienta_id', $id)
+                ->where('estado', 'prestado')
+                ->selectRaw(
+                    'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS pendiente'
+                )
+                ->value('pendiente'),
+            2
+        );
     }
 
     public function guardarPrestamo(): void
     {
         $this->validate();
 
-        $fechaDevolucion = Carbon::createFromFormat(
-            'Y-m-d\TH:i',
+        $fecha = Carbon::createFromFormat(
+            '!Y-m-d\TH:i',
             $this->fechaPrevistaDevolucion
         );
 
-        if ($fechaDevolucion->lessThanOrEqualTo(now())) {
+        if ($fecha->lessThanOrEqualTo(now())) {
             $this->addError(
                 'fechaPrevistaDevolucion',
-                'La devolución debe programarse para una fecha y hora futuras.'
+                'La fecha y hora deben ser posteriores al momento actual.'
             );
 
             return;
         }
 
-        // Evitar el mismo activo dos veces en el formulario.
-        $claves = [];
+        // Impedir repetir un activo en una operación.
+        $vistos = [];
 
         foreach ($this->activosSeleccionados as $indice => $activo) {
-            $clave = $activo['tipo'] . ':' . $activo['item_id'];
+            $clave = $activo['tipo'].':'.$activo['item_id'];
 
-            if (in_array($clave, $claves, true)) {
+            if (isset($vistos[$clave])) {
                 $this->addError(
                     "activosSeleccionados.$indice.item_id",
-                    'Este activo ya fue agregado al préstamo.'
+                    'Este activo ya está incluido en el préstamo.'
                 );
             }
 
-            $claves[] = $clave;
+            $vistos[$clave] = true;
         }
 
         if ($this->getErrorBag()->isNotEmpty()) {
             return;
         }
 
-        /*
-         * Ordenamos los activos para adquirir bloqueos
-         * siempre en el mismo orden.
-         */
-        $activosOrdenados = collect($this->activosSeleccionados)
-            ->sortBy(fn ($activo) =>
-                $activo['tipo'] . ':' .
-                str_pad((string) $activo['item_id'], 20, '0', STR_PAD_LEFT)
-            )
+        // Orden uniforme de bloqueo para reducir interbloqueos.
+        $ordenados = collect($this->activosSeleccionados)
+            ->sortBy(function ($activo) {
+                $grupo = $activo['tipo'] === 'equipo'
+                    ? '1'
+                    : '0';
+
+                return $grupo.':'.
+                    str_pad(
+                        (string) $activo['item_id'],
+                        20,
+                        '0',
+                        STR_PAD_LEFT
+                    );
+            })
             ->values();
 
-        DB::transaction(function () use (
-            $fechaDevolucion,
-            $activosOrdenados
-        ) {
-            $activosValidados = [];
+        DB::transaction(function () use ($fecha, $ordenados) {
+            $detallesValidados = [];
 
-            /*
-             * Validamos dentro de la transacción.
-             * Los bloqueos se mantienen hasta finalizar.
-             */
-            foreach ($activosOrdenados as $activo) {
+            $departamento = Departamento::query()
+                ->whereKey((int) $this->departamentoDestinoId)
+                ->where('activo', true)
+                ->first();
+
+            if (! $departamento) {
+                throw ValidationException::withMessages([
+                    'departamentoDestinoId' => 'Seleccione un departamento activo.',
+                ]);
+            }
+
+            foreach ($ordenados as $activo) {
                 $tipo = $activo['tipo'];
                 $id = (int) $activo['item_id'];
+                $cantidad = round((float) $activo['cantidad'], 2);
+                $campoError = $this->campoErrorActivo($tipo, $id);
 
-                if ($tipo === 'herramienta') {
-                    $registro = Herramienta::query()
+                if ($tipo === 'equipo') {
+                    $equipo = Equipo::query()
                         ->whereKey($id)
-                        ->where('activo', true)
-                        ->where('tipo_control', 'individual')
                         ->lockForUpdate()
                         ->first();
+
+                    if (! $equipo) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'El equipo no está disponible.',
+                        ]);
+                    }
+
+                    if (abs($cantidad - 1) > 0.00001) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'Cada equipo se presta individualmente (cantidad 1).',
+                        ]);
+                    }
+
+                    $ocupado = PrestamoDetalle::query()
+                        ->where('equipo_id', $id)
+                        ->where('estado', 'prestado')
+                        ->exists();
+
+                    if ($ocupado) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'El equipo ya está prestado.',
+                        ]);
+                    }
+
+                    $detallesValidados[] = [
+                        'herramienta_id' => null,
+                        'equipo_id' => $id,
+                        'cantidad_prestada' => 1,
+                        'cantidad_devuelta' => 0,
+                        'estado' => 'prestado',
+                    ];
+
+                    continue;
+                }
+
+                $controlEsperado = $tipo === 'herramienta_individual'
+                    ? 'individual'
+                    : 'cantidad';
+
+                $herramienta = Herramienta::query()
+                    ->whereKey($id)
+                    ->where('activo', true)
+                    ->where('tipo_control', $controlEsperado)
+                    ->with('unidadMedida')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $herramienta) {
+                    throw ValidationException::withMessages([
+                        $campoError => 'La herramienta no está disponible o no corresponde al tipo seleccionado.',
+                    ]);
+                }
+
+                if ($tipo === 'herramienta_individual') {
+                    if (abs($cantidad - 1) > 0.00001) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'Las herramientas individuales se prestan de una en una.',
+                        ]);
+                    }
+
+                    $pendiente = $this->pendienteHerramienta($id);
+
+                    if ($pendiente > 0) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'Esta herramienta individual ya está prestada.',
+                        ]);
+                    }
+
+                    if ((float) $herramienta->cantidad_actual < 1) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'La herramienta no tiene existencia disponible.',
+                        ]);
+                    }
                 } else {
-                    $registro = Equipo::query()
-                        ->whereKey($id)
-                        ->lockForUpdate()
-                        ->first();
+                    $permiteDecimales = (bool)
+                        $herramienta->unidadMedida?->permite_decimales;
+
+                    if (
+                        ! $permiteDecimales
+                        && abs($cantidad - round($cantidad)) > 0.00001
+                    ) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'La unidad de medida no permite cantidades decimales.',
+                        ]);
+                    }
+
+                    $pendiente = $this->pendienteHerramienta($id);
+
+                    $disponible = round(
+                        (float) $herramienta->cantidad_actual
+                            - $pendiente,
+                        2
+                    );
+
+                    if ($cantidad > $disponible) {
+                        throw ValidationException::withMessages([
+                            $campoError => 'Existencia insuficiente. Disponible: '.
+                                max(0, $disponible),
+                        ]);
+                    }
                 }
 
-                if (! $registro) {
-                    throw ValidationException::withMessages([
-                        'activosSeleccionados' =>
-                            'Uno de los activos ya no se encuentra disponible.',
-                    ]);
-                }
-
-                $prestado = PrestamoDetalle::query()
-                    ->where('estado', 'prestado')
-                    ->where(function ($query) use ($tipo, $id) {
-                        if ($tipo === 'herramienta') {
-                            $query->where('herramienta_id', $id);
-                        } else {
-                            $query->where('equipo_id', $id);
-                        }
-                    })
-                    ->exists();
-
-                if ($prestado) {
-                    throw ValidationException::withMessages([
-                        'activosSeleccionados' =>
-                            'Uno de los activos ya está prestado. Actualice el formulario.',
-                    ]);
-                }
-
-                $activosValidados[] = [
-                    'tipo' => $tipo,
-                    'id' => $id,
+                $detallesValidados[] = [
+                    'herramienta_id' => $id,
+                    'equipo_id' => null,
+                    'cantidad_prestada' => $cantidad,
+                    'cantidad_devuelta' => 0,
+                    'estado' => 'prestado',
                 ];
             }
 
-            // Crear cabecera del préstamo.
             $prestamo = Prestamo::create([
-                'departamento_destino_id' =>
-                    (int) $this->departamentoDestinoId,
-
-                'persona_recibe' =>
-                    trim($this->personaRecibe),
-
-                'fecha_prestamo' =>
-                    now(),
-
-                'fecha_prevista_devolucion' =>
-                    $fechaDevolucion,
-
+                'departamento_destino_id' => (int) $this->departamentoDestinoId,
+                'persona_recibe' => trim($this->personaRecibe),
+                'fecha_prestamo' => now(),
+                'fecha_prevista_devolucion' => $fecha,
                 'estado' => 'activo',
-
-                'observaciones' =>
-                    trim($this->observaciones) !== ''
+                'observaciones' => trim($this->observaciones) !== ''
                         ? trim($this->observaciones)
                         : null,
-
-                'registrado_por' =>
-                    Auth::id(),
+                'registrado_por' => Auth::id(),
             ]);
 
-            // Crear un detalle para cada activo prestado.
-            foreach ($activosValidados as $activo) {
-                PrestamoDetalle::create([
-                    'prestamo_id' => $prestamo->id,
-
-                    'herramienta_id' =>
-                        $activo['tipo'] === 'herramienta'
-                            ? $activo['id']
-                            : null,
-
-                    'equipo_id' =>
-                        $activo['tipo'] === 'equipo'
-                            ? $activo['id']
-                            : null,
-
-                    'estado' => 'prestado',
-                ]);
+            foreach ($detallesValidados as $detalle) {
+                $prestamo->detalles()->create($detalle);
             }
         }, 3);
 
@@ -345,7 +399,7 @@ class Index extends Component
 
         session()->flash(
             'mensaje',
-            'Préstamo de activos registrado correctamente.'
+            'Préstamo registrado correctamente.'
         );
     }
 
@@ -360,43 +414,39 @@ class Index extends Component
                 'detalles.equipo.tipoEquipo',
             ])
             ->when($this->buscar !== '', function ($query) {
-                $buscar = '%' . trim($this->buscar) . '%';
+                $buscar = '%'.trim($this->buscar).'%';
 
-                $query->where(function ($subQuery) use ($buscar) {
-                    $subQuery
-                        ->where('persona_recibe', 'like', $buscar)
+                $query->where(function ($q) use ($buscar) {
+                    $q->where('persona_recibe', 'like', $buscar)
                         ->orWhereHas(
                             'departamentoDestino',
-                            fn ($q) => $q->where('nombre', 'like', $buscar)
+                            fn ($d) => $d->where('nombre', 'like', $buscar)
                         )
                         ->orWhereHas(
                             'detalles.herramienta',
-                            function ($q) use ($buscar) {
-                                $q->where('nombre', 'like', $buscar)
-                                    ->orWhere('codigo_interno', 'like', $buscar);
-                            }
+                            fn ($h) => $h
+                                ->where('nombre', 'like', $buscar)
+                                ->orWhere('codigo_interno', 'like', $buscar)
                         )
                         ->orWhereHas(
                             'detalles.equipo',
-                            function ($q) use ($buscar) {
-                                $q->where('numero_inventario', 'like', $buscar)
-                                    ->orWhere('numero_serie', 'like', $buscar)
-                                    ->orWhere('modelo', 'like', $buscar);
-                            }
+                            fn ($e) => $e
+                                ->where('numero_inventario', 'like', $buscar)
+                                ->orWhere('modelo', 'like', $buscar)
                         );
                 });
             })
             ->when(
                 $this->filtroEstado === 'activo',
-                fn ($query) => $query->where('estado', 'activo')
+                fn ($q) => $q->where('estado', 'activo')
             )
             ->when(
                 $this->filtroEstado === 'completado',
-                fn ($query) => $query->where('estado', 'completado')
+                fn ($q) => $q->where('estado', 'completado')
             )
             ->when(
                 $this->filtroEstado === 'vencido',
-                fn ($query) => $query
+                fn ($q) => $q
                     ->where('estado', 'activo')
                     ->where('fecha_prevista_devolucion', '<', now())
             )
@@ -408,21 +458,63 @@ class Index extends Component
             ->orderBy('nombre')
             ->get();
 
-        $herramientas = Herramienta::query()
+        // Herramientas individuales sin préstamo pendiente.
+        $herramientasIndividuales = Herramienta::query()
             ->where('activo', true)
             ->where('tipo_control', 'individual')
+            ->where('cantidad_actual', '>=', 1)
             ->whereDoesntHave(
                 'prestamos',
-                fn ($query) => $query->where('estado', 'prestado')
+                fn ($q) => $q->where('estado', 'prestado')
             )
             ->with('marca')
             ->orderBy('nombre')
             ->get();
 
+        // Herramientas controladas por cantidad.
+        $herramientasCantidad = Herramienta::query()
+            ->where('activo', true)
+            ->where('tipo_control', 'cantidad')
+            ->where('cantidad_actual', '>', 0)
+            ->with(['marca', 'unidadMedida'])
+            ->orderBy('nombre')
+            ->get();
+
+        // Calcular pendientes en una consulta agrupada.
+        $pendientes = PrestamoDetalle::query()
+            ->where('estado', 'prestado')
+            ->whereNotNull('herramienta_id')
+            ->select('herramienta_id')
+            ->selectRaw(
+                'SUM(cantidad_prestada - cantidad_devuelta) AS total_pendiente'
+            )
+            ->groupBy('herramienta_id')
+            ->pluck('total_pendiente', 'herramienta_id');
+
+        $disponiblesCantidad = [];
+
+        foreach ($herramientasCantidad as $herramienta) {
+            $pendiente = (float) (
+                $pendientes[$herramienta->id] ?? 0
+            );
+
+            $disponiblesCantidad[$herramienta->id] = max(
+                0,
+                round(
+                    (float) $herramienta->cantidad_actual - $pendiente,
+                    2
+                )
+            );
+        }
+
+        $herramientasCantidad = $herramientasCantidad
+            ->filter(fn ($h) => $disponiblesCantidad[$h->id] > 0
+            );
+
         $equipos = Equipo::query()
             ->whereDoesntHave(
                 'prestamos',
-                fn ($query) => $query->where('estado', 'prestado')
+                fn ($q) => $q->where('estado', 'prestado')
             )
             ->with(['marca', 'tipoEquipo'])
             ->orderBy('numero_inventario')
@@ -433,7 +525,9 @@ class Index extends Component
             compact(
                 'prestamos',
                 'departamentos',
-                'herramientas',
+                'herramientasIndividuales',
+                'herramientasCantidad',
+                'disponiblesCantidad',
                 'equipos'
             )
         );

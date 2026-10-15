@@ -617,17 +617,11 @@
 
                                                             —
                                                             Disponible:
-                                                            {{ rtrim(
-                                                                rtrim(
-                                                                    number_format(
-                                                                        (float) $herramienta->cantidad_actual,
-                                                                        2,
-                                                                        '.',
-                                                                        ''
-                                                                    ),
-                                                                    '0'
-                                                                ),
-                                                                '.'
+                                                            {{ number_format(
+                                                                $disponiblesHerramientas[$herramienta->id] ?? 0,
+                                                                2,
+                                                                '.',
+                                                                ''
                                                             ) }}
 
                                                         </option>

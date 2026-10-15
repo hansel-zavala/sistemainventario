@@ -78,6 +78,10 @@
                             Procedencia
                         </th>
 
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            Disponibilidad
+                        </th>
+
                         <th class="px-5 py-3 text-right text-xs font-semibold uppercase text-gray-500">
                             Acciones
                         </th>
@@ -135,6 +139,18 @@
                                     ({{ $equipo->departamento->sigla }})
                                 @endif
 
+                            </td>
+
+                            <td class="px-4 py-3">
+                                @if ($equipo->esta_prestado)
+                                    <span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                                        Prestado
+                                    </span>
+                                @else
+                                    <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                                        Disponible
+                                    </span>
+                                @endif
                             </td>
 
 

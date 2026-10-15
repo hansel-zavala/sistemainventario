@@ -67,4 +67,39 @@ class Herramienta extends Model
             'herramienta_id'
         );
     }
+
+    public function getCantidadPrestadaAttribute(): float
+    {
+        if ($this->tipo_control === 'individual') {
+            return $this->prestamos()
+                ->where('estado', 'prestado')
+                ->exists() ? 1.0 : 0.0;
+        }
+
+        $detalles = $this->prestamos()
+            ->where('estado', 'prestado')
+            ->get([
+                'cantidad_prestada',
+                'cantidad_devuelta',
+            ]);
+
+        return round(
+            $detalles->sum(
+                fn ($detalle) => $detalle->cantidad_pendiente
+            ),
+            2
+        );
+    }
+
+    public function getCantidadDisponibleAttribute(): float
+    {
+        return max(
+            0,
+            round(
+                (float) $this->cantidad_actual
+                - $this->cantidad_prestada,
+                2
+            )
+        );
+    }
 }

@@ -2,10 +2,12 @@
 
 namespace App\Livewire\Movimientos\Salidas;
 
+use App\Models\Departamento;
 use App\Models\Herramienta;
 use App\Models\Insumo;
 use App\Models\MovimientoInventario;
 use App\Models\MovimientoInventarioDetalle;
+use App\Models\PrestamoDetalle;
 use App\Models\Tinta;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +15,6 @@ use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Models\Departamento;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
@@ -34,12 +35,10 @@ class Index extends Component
 
     public array $detalles = [];
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
-
 
     public function nuevaSalida(): void
     {
@@ -50,7 +49,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -59,7 +57,6 @@ class Index extends Component
 
         $this->resetFormulario();
     }
-
 
     private function resetFormulario(): void
     {
@@ -70,7 +67,6 @@ class Index extends Component
         $this->detalles = [];
     }
 
-
     public function agregarDetalle(): void
     {
         $this->detalles[] = [
@@ -79,7 +75,6 @@ class Index extends Component
             'cantidad' => '',
         ];
     }
-
 
     public function eliminarDetalle(int $indice): void
     {
@@ -95,7 +90,6 @@ class Index extends Component
 
         $this->resetValidation();
     }
-
 
     public function updatedDetalles(
         $value,
@@ -117,7 +111,6 @@ class Index extends Component
             }
         }
     }
-
 
     protected function rules(): array
     {
@@ -169,59 +162,42 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'observaciones.max' =>
-                'Las observaciones no pueden superar los 2000 caracteres.',
+            'observaciones.max' => 'Las observaciones no pueden superar los 2000 caracteres.',
 
-            'detalles.*.tipo_item.required' =>
-                'Debe seleccionar el tipo de artículo.',
+            'detalles.*.tipo_item.required' => 'Debe seleccionar el tipo de artículo.',
 
-            'detalles.*.tipo_item.in' =>
-                'El tipo de artículo seleccionado no es válido.',
+            'detalles.*.tipo_item.in' => 'El tipo de artículo seleccionado no es válido.',
 
-            'detalles.*.item_id.required' =>
-                'Debe seleccionar un artículo.',
+            'detalles.*.item_id.required' => 'Debe seleccionar un artículo.',
 
-            'detalles.*.item_id.integer' =>
-                'El artículo seleccionado no es válido.',
+            'detalles.*.item_id.integer' => 'El artículo seleccionado no es válido.',
 
-            'detalles.*.cantidad.required' =>
-                'Debe ingresar la cantidad.',
+            'detalles.*.cantidad.required' => 'Debe ingresar la cantidad.',
 
-            'detalles.*.cantidad.numeric' =>
-                'La cantidad debe ser numérica.',
+            'detalles.*.cantidad.numeric' => 'La cantidad debe ser numérica.',
 
-            'detalles.*.cantidad.gt' =>
-                'La cantidad debe ser mayor que cero.',
+            'detalles.*.cantidad.gt' => 'La cantidad debe ser mayor que cero.',
 
-            'departamentoDestinoId.required' =>
-                'Debe seleccionar el departamento destino.',
+            'departamentoDestinoId.required' => 'Debe seleccionar el departamento destino.',
 
-            'departamentoDestinoId.exists' =>
-                'El departamento seleccionado no es válido.',
+            'departamentoDestinoId.exists' => 'El departamento seleccionado no es válido.',
 
-            'personaRecibe.required' =>
-                'Debe indicar quién recibe los artículos.',
+            'personaRecibe.required' => 'Debe indicar quién recibe los artículos.',
 
-            'personaRecibe.max' =>
-                'El nombre de la persona no puede superar los 150 caracteres.',
+            'personaRecibe.max' => 'El nombre de la persona no puede superar los 150 caracteres.',
 
-            'motivo.required' =>
-                'Debe indicar el motivo de la salida.',
+            'motivo.required' => 'Debe indicar el motivo de la salida.',
 
-            'motivo.max' =>
-                'El motivo no puede superar los 255 caracteres.',
+            'motivo.max' => 'El motivo no puede superar los 255 caracteres.',
         ];
     }
-
 
     public function guardarSalida(): void
     {
         $this->validate();
-
 
         /*
         |--------------------------------------------------------------------------
@@ -235,9 +211,8 @@ class Index extends Component
 
             $claveArticulo =
                 $detalle['tipo_item']
-                . '-'
-                . $detalle['item_id'];
-
+                .'-'
+                .$detalle['item_id'];
 
             if (
                 in_array(
@@ -255,16 +230,13 @@ class Index extends Component
                 continue;
             }
 
-
             $articulosUsados[] =
                 $claveArticulo;
         }
 
-
         if ($this->getErrorBag()->isNotEmpty()) {
             return;
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -280,12 +252,10 @@ class Index extends Component
             $cantidad =
                 (float) $detalle['cantidad'];
 
-
             $item = $this->buscarItem(
                 $tipo,
                 (int) $detalle['item_id']
             );
-
 
             if (! $item) {
 
@@ -296,7 +266,6 @@ class Index extends Component
 
                 continue;
             }
-
 
             /*
             |--------------------------------------------------------------------------
@@ -316,7 +285,6 @@ class Index extends Component
 
                 continue;
             }
-
 
             /*
             |--------------------------------------------------------------------------
@@ -349,7 +317,6 @@ class Index extends Component
                 }
             }
 
-
             /*
             |--------------------------------------------------------------------------
             | Tinta: solamente botellas completas
@@ -369,7 +336,6 @@ class Index extends Component
                 continue;
             }
 
-
             /*
             |--------------------------------------------------------------------------
             | Validar existencia
@@ -382,7 +348,6 @@ class Index extends Component
                     $item
                 );
 
-
             if ($cantidad > $existenciaDisponible) {
 
                 $this->addError(
@@ -392,11 +357,9 @@ class Index extends Component
             }
         }
 
-
         if ($this->getErrorBag()->isNotEmpty()) {
             return;
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -409,27 +372,20 @@ class Index extends Component
             $movimiento = MovimientoInventario::create([
                 'tipo' => 'salida',
 
-                'fecha_movimiento' =>
-                    now(),
+                'fecha_movimiento' => now(),
 
-                'departamento_destino_id' =>
-                    (int) $this->departamentoDestinoId,
+                'departamento_destino_id' => (int) $this->departamentoDestinoId,
 
-                'persona_recibe' =>
-                    trim($this->personaRecibe),
+                'persona_recibe' => trim($this->personaRecibe),
 
-                'motivo' =>
-                    trim($this->motivo),
+                'motivo' => trim($this->motivo),
 
-                'observaciones' =>
-                    trim($this->observaciones) !== ''
+                'observaciones' => trim($this->observaciones) !== ''
                         ? trim($this->observaciones)
                         : null,
 
-                'registrado_por' =>
-                    Auth::id(),
+                'registrado_por' => Auth::id(),
             ]);
-
 
             foreach ($this->detalles as $indice => $detalle) {
 
@@ -438,7 +394,6 @@ class Index extends Component
 
                 $cantidad =
                     (float) $detalle['cantidad'];
-
 
                 /*
                 |--------------------------------------------------------------------------
@@ -452,15 +407,12 @@ class Index extends Component
                         (int) $detalle['item_id']
                     );
 
-
                 if (! $item) {
 
                     throw ValidationException::withMessages([
-                        "detalles.$indice.item_id" =>
-                            'El artículo ya no se encuentra disponible.',
+                        "detalles.$indice.item_id" => 'El artículo ya no se encuentra disponible.',
                     ]);
                 }
-
 
                 /*
                 |--------------------------------------------------------------------------
@@ -474,15 +426,15 @@ class Index extends Component
                         $item
                     );
 
-
                 if ($cantidad > $disponible) {
 
                     throw ValidationException::withMessages([
-                        "detalles.$indice.cantidad" =>
-                            'La existencia cambió y ya no hay suficiente cantidad disponible.',
+                        "detalles.$indice.cantidad" => 'Existencia disponible insuficiente. '
+                            .'Actualmente hay '
+                            .number_format($disponible, 2, '.', '')
+                            .' unidades disponibles.',
                     ]);
                 }
-
 
                 /*
                 |--------------------------------------------------------------------------
@@ -496,7 +448,6 @@ class Index extends Component
                         $item
                     );
 
-
                 /*
                 |--------------------------------------------------------------------------
                 | Aplicar salida
@@ -509,9 +460,7 @@ class Index extends Component
                     $cantidad
                 );
 
-
                 $item->refresh();
-
 
                 /*
                 |--------------------------------------------------------------------------
@@ -525,7 +474,6 @@ class Index extends Component
                         $item
                     );
 
-
                 /*
                 |--------------------------------------------------------------------------
                 | Guardar detalle histórico
@@ -533,39 +481,30 @@ class Index extends Component
                 */
 
                 MovimientoInventarioDetalle::create([
-                    'movimiento_inventario_id' =>
-                        $movimiento->id,
+                    'movimiento_inventario_id' => $movimiento->id,
 
-                    'tipo_item' =>
-                        $tipo,
+                    'tipo_item' => $tipo,
 
-                    'item_id' =>
-                        $item->id,
+                    'item_id' => $item->id,
 
-                    'cantidad' =>
-                        $cantidad,
+                    'cantidad' => $cantidad,
 
-                    'existencia_anterior' =>
-                        $existenciaAnterior,
+                    'existencia_anterior' => $existenciaAnterior,
 
-                    'existencia_posterior' =>
-                        $existenciaPosterior,
+                    'existencia_posterior' => $existenciaPosterior,
                 ]);
             }
         });
-
 
         session()->flash(
             'mensaje',
             'Salida de inventario registrada correctamente.'
         );
 
-
         $this->cerrarModal();
 
         $this->resetPage();
     }
-
 
     private function buscarItem(
         string $tipo,
@@ -573,30 +512,26 @@ class Index extends Component
     ) {
         return match ($tipo) {
 
-            'herramienta' =>
-                Herramienta::query()
-                    ->whereKey($id)
-                    ->where('activo', true)
-                    ->with('unidadMedida')
-                    ->first(),
+            'herramienta' => Herramienta::query()
+                ->whereKey($id)
+                ->where('activo', true)
+                ->with('unidadMedida')
+                ->first(),
 
-            'insumo' =>
-                Insumo::query()
-                    ->whereKey($id)
-                    ->where('activo', true)
-                    ->with('unidadMedida')
-                    ->first(),
+            'insumo' => Insumo::query()
+                ->whereKey($id)
+                ->where('activo', true)
+                ->with('unidadMedida')
+                ->first(),
 
-            'tinta' =>
-                Tinta::query()
-                    ->whereKey($id)
-                    ->where('activo', true)
-                    ->first(),
+            'tinta' => Tinta::query()
+                ->whereKey($id)
+                ->where('activo', true)
+                ->first(),
 
             default => null,
         };
     }
-
 
     private function buscarItemParaActualizar(
         string $tipo,
@@ -604,30 +539,24 @@ class Index extends Component
     ) {
         $query = match ($tipo) {
 
-            'herramienta' =>
-                Herramienta::query(),
+            'herramienta' => Herramienta::query(),
 
-            'insumo' =>
-                Insumo::query(),
+            'insumo' => Insumo::query(),
 
-            'tinta' =>
-                Tinta::query(),
+            'tinta' => Tinta::query(),
 
             default => null,
         };
 
-
         if (! $query) {
             return null;
         }
-
 
         $item = $query
             ->whereKey($id)
             ->where('activo', true)
             ->lockForUpdate()
             ->first();
-
 
         if (
             $item
@@ -643,10 +572,8 @@ class Index extends Component
             $item->load('unidadMedida');
         }
 
-
         return $item;
     }
-
 
     /*
     |--------------------------------------------------------------------------
@@ -672,19 +599,44 @@ class Index extends Component
         $item
     ): float {
 
-        return match ($tipo) {
+        if ($tipo === 'herramienta') {
 
-            'herramienta',
-            'insumo' =>
-                (float) $item->cantidad_actual,
+            // Las herramientas individuales no se manejan por Salidas.
+            if ($item->tipo_control === 'individual') {
+                return 0;
+            }
 
-            'tinta' =>
-                (float) $item->botellas_completas,
+            // Sumar únicamente las cantidades aún pendientes.
+            $cantidadPendiente = PrestamoDetalle::query()
+                ->where('herramienta_id', $item->id)
+                ->where('estado', 'prestado')
+                ->selectRaw(
+                    'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS total'
+                )
+                ->value('total');
 
-            default => 0,
-        };
+            $existenciaTotal = (float) $item->cantidad_actual;
+
+            return max(
+                0,
+                round(
+                    $existenciaTotal - (float) $cantidadPendiente,
+                    2
+                )
+            );
+        }
+
+        if ($tipo === 'insumo') {
+            return (float) $item->cantidad_actual;
+        }
+
+        if ($tipo === 'tinta') {
+            // Únicamente botellas completas.
+            return (float) $item->botellas_completas;
+        }
+
+        return 0;
     }
-
 
     /*
     |--------------------------------------------------------------------------
@@ -703,11 +655,9 @@ class Index extends Component
         return match ($tipo) {
 
             'herramienta',
-            'insumo' =>
-                (float) $item->cantidad_actual,
+            'insumo' => (float) $item->cantidad_actual,
 
-            'tinta' =>
-                (float) $item->botellas_completas
+            'tinta' => (float) $item->botellas_completas
                 + (
                     (float) $item->porcentaje_botella_abierta
                     / 100
@@ -716,7 +666,6 @@ class Index extends Component
             default => 0,
         };
     }
-
 
     private function aplicarSalida(
         string $tipo,
@@ -730,25 +679,21 @@ class Index extends Component
         ) {
 
             $item->update([
-                'cantidad_actual' =>
-                    (float) $item->cantidad_actual
+                'cantidad_actual' => (float) $item->cantidad_actual
                     - $cantidad,
             ]);
 
             return;
         }
 
-
         if ($tipo === 'tinta') {
 
             $item->update([
-                'botellas_completas' =>
-                    (int) $item->botellas_completas
+                'botellas_completas' => (int) $item->botellas_completas
                     - (int) $cantidad,
             ]);
         }
     }
-
 
     public function render()
     {
@@ -772,8 +717,7 @@ class Index extends Component
                 function ($query) {
 
                     $buscar =
-                        '%' . trim($this->buscar) . '%';
-
+                        '%'.trim($this->buscar).'%';
 
                     $query->where(
                         function ($subQuery) use ($buscar) {
@@ -804,7 +748,6 @@ class Index extends Component
             ->latest('fecha_movimiento')
             ->paginate(10);
 
-
         /*
         |--------------------------------------------------------------------------
         | Herramientas por cantidad
@@ -831,7 +774,6 @@ class Index extends Component
 
             ->get();
 
-
         /*
         |--------------------------------------------------------------------------
         | Insumos con existencia
@@ -852,7 +794,6 @@ class Index extends Component
             ->orderBy('nombre')
 
             ->get();
-
 
         /*
         |--------------------------------------------------------------------------
@@ -876,12 +817,45 @@ class Index extends Component
 
             ->get();
 
-
         $departamentos = Departamento::query()
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
 
+        // Cantidades pendientes de devolución por herramienta.
+        $pendientesHerramientas = PrestamoDetalle::query()
+            ->where('estado', 'prestado')
+            ->whereNotNull('herramienta_id')
+            ->select('herramienta_id')
+            ->selectRaw(
+                'SUM(cantidad_prestada - cantidad_devuelta) AS pendiente'
+            )
+            ->groupBy('herramienta_id')
+            ->pluck('pendiente', 'herramienta_id');
+
+        // Disponibilidad real de cada herramienta.
+        $disponiblesHerramientas = [];
+
+        foreach ($herramientas as $herramienta) {
+
+            $pendiente = (float) (
+                $pendientesHerramientas[$herramienta->id] ?? 0
+            );
+
+            $disponiblesHerramientas[$herramienta->id] = max(
+                0,
+                round(
+                    (float) $herramienta->cantidad_actual - $pendiente,
+                    2
+                )
+            );
+        }
+
+        // Ocultar las herramientas sin unidades disponibles.
+        $herramientas = $herramientas
+            ->filter(
+                fn ($herramienta) => $disponiblesHerramientas[$herramienta->id] > 0
+            );
 
         return view(
             'livewire.movimientos.salidas.index',
@@ -890,7 +864,8 @@ class Index extends Component
                 'herramientas',
                 'insumos',
                 'tintas',
-                'departamentos'
+                'departamentos',
+                'disponiblesHerramientas'
             )
         );
     }
