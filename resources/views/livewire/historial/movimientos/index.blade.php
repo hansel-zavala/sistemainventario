@@ -55,6 +55,46 @@
                 </select>
             </div>
 
+
+            {{-- Tipo de artículo --}}
+            <div>
+                <label class="mb-1 block text-sm font-medium text-gray-700">
+                    Tipo de artículo
+                </label>
+
+                <select
+                    wire:model.live="filtroArticuloTipo"
+                    class="w-full rounded-lg border border-gray-300 px-4 py-2">
+                    <option value="">Todos los artículos</option>
+                    <option value="equipo">Equipos tecnológicos</option>
+                    <option value="herramienta">Herramientas</option>
+                    <option value="insumo">Insumos</option>
+                    <option value="tinta">Tinta</option>
+                </select>
+            </div>
+
+
+            {{-- Usuario responsable --}}
+            <div>
+                <label class="mb-1 block text-sm font-medium text-gray-700">
+                    Responsable
+                </label>
+
+                <select
+                    wire:model.live="filtroResponsable"
+                    class="w-full rounded-lg border border-gray-300 px-4 py-2">
+                    <option value="">Todos los responsables</option>
+
+                    @foreach ($usuarios as $usuario)
+                    <option value="{{ $usuario->id }}">
+                        {{ $usuario->name }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+
+
+
             {{-- Fecha desde --}}
             <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">

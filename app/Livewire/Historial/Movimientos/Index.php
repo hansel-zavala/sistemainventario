@@ -12,6 +12,10 @@ class Index extends Component
 {
     use WithPagination;
 
+    public string $filtroArticuloTipo = '';
+
+    public string $filtroResponsable = '';
+
     public string $buscar = '';
     public string $filtroTipo = '';
     public string $fechaDesde = '';
@@ -37,11 +41,23 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function updatedFiltroArticuloTipo(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFiltroResponsable(): void
+    {
+        $this->resetPage();
+    }
+
     public function limpiarFiltros(): void
     {
         $this->reset([
             'buscar',
             'filtroTipo',
+            'filtroArticuloTipo',
+            'filtroResponsable',
             'fechaDesde',
             'fechaHasta',
         ]);
@@ -51,7 +67,7 @@ class Index extends Component
 
     private function construirEventos()
     {
-        
+
         // Rehacer las uniones según tipo_item.
         // Así un ID repetido en distintas tablas
         // nunca identifica un artículo incorrecto.
@@ -415,6 +431,62 @@ class Index extends Component
             }
         }
 
+
+        /*
+|--------------------------------------------------------------------------
+| Filtrar por tipo de artículo
+|--------------------------------------------------------------------------
+*/
+
+        $tiposArticulo = [
+            'equipo',
+            'herramienta',
+            'insumo',
+            'tinta',
+        ];
+
+        if ($this->filtroArticuloTipo !== '') {
+
+            if (in_array(
+                $this->filtroArticuloTipo,
+                $tiposArticulo,
+                true
+            )) {
+
+                $query->where(
+                    'eventos.tipo_item',
+                    $this->filtroArticuloTipo
+                );
+            } else {
+
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        /*
+|--------------------------------------------------------------------------
+| Filtrar por usuario responsable
+|--------------------------------------------------------------------------
+*/
+
+        if ($this->filtroResponsable !== '') {
+
+            if (
+                ctype_digit($this->filtroResponsable)
+                && (int) $this->filtroResponsable > 0
+            ) {
+
+                $query->where(
+                    'eventos.responsable_id',
+                    (int) $this->filtroResponsable
+                );
+            } else {
+
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+
         // Validar fechas antes de utilizarlas.
         if (
             $this->fechaDesde !== ''
@@ -450,9 +522,17 @@ class Index extends Component
             ->orderByDesc('eventos.origen_id')
             ->paginate(15);
 
+        $usuarios = DB::table('users')
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
         return view(
             'livewire.historial.movimientos.index',
-            compact('eventosHistorial')
+            compact(
+                'eventosHistorial',
+                'usuarios'
+            )
         );
     }
 }
