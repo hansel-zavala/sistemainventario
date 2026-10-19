@@ -4,6 +4,8 @@ namespace App\Livewire\Inventario\Tintas;
 
 use App\Models\Marca;
 use App\Models\Tinta;
+use App\Models\MovimientoInventarioDetalle;
+use App\Models\RecargaTintaDetalle;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -15,6 +17,12 @@ use App\Services\RegistrarAperturaInventario;
 class Index extends Component
 {
     use WithPagination;
+
+    public bool $mostrarHistorial = false;
+
+    public ?int $historialTintaId = null;
+
+    public string $historialTintaNombre = '';
 
     public string $buscar = '';
 
@@ -195,140 +203,140 @@ class Index extends Component
     {
         return [
             'nombre.required' =>
-                'El nombre o referencia de la tinta es obligatorio.',
+            'El nombre o referencia de la tinta es obligatorio.',
 
             'marcaId.exists' =>
-                'La marca seleccionada no es válida.',
+            'La marca seleccionada no es válida.',
 
             'color.required' =>
-                'El color de la tinta es obligatorio.',
+            'El color de la tinta es obligatorio.',
 
             'botellasCompletas.required' =>
-                'Debe indicar la cantidad de botellas completas.',
+            'Debe indicar la cantidad de botellas completas.',
 
             'botellasCompletas.integer' =>
-                'Las botellas completas deben registrarse con un número entero.',
+            'Las botellas completas deben registrarse con un número entero.',
 
             'botellasCompletas.min' =>
-                'La cantidad de botellas no puede ser negativa.',
+            'La cantidad de botellas no puede ser negativa.',
 
             'porcentajeBotellaAbierta.required' =>
-                'Debe indicar el porcentaje restante de la botella abierta.',
+            'Debe indicar el porcentaje restante de la botella abierta.',
 
             'porcentajeBotellaAbierta.numeric' =>
-                'El porcentaje de la botella abierta debe ser un número.',
+            'El porcentaje de la botella abierta debe ser un número.',
 
             'porcentajeBotellaAbierta.min' =>
-                'El porcentaje no puede ser negativo.',
+            'El porcentaje no puede ser negativo.',
 
             'porcentajeBotellaAbierta.max' =>
-                'La botella abierta debe tener un valor menor de 100 %.',
+            'La botella abierta debe tener un valor menor de 100 %.',
 
             'stockMinimoBotellas.required' =>
-                'Debe indicar el stock mínimo.',
+            'Debe indicar el stock mínimo.',
 
             'stockMinimoBotellas.numeric' =>
-                'El stock mínimo debe ser un número.',
+            'El stock mínimo debe ser un número.',
 
             'stockMinimoBotellas.min' =>
-                'El stock mínimo no puede ser negativo.',
+            'El stock mínimo no puede ser negativo.',
 
             'observaciones.max' =>
-                'Las observaciones no pueden superar los 2000 caracteres.',
+            'Las observaciones no pueden superar los 2000 caracteres.',
         ];
     }
 
 
-    
-public function guardarTinta(): void
-{
-    $this->validate();
 
-    $esCreacion = $this->tintaId === null;
+    public function guardarTinta(): void
+    {
+        $this->validate();
 
-    $nombre = trim($this->nombre);
-    $color = trim($this->color);
+        $esCreacion = $this->tintaId === null;
 
-    $marcaId = $this->marcaId !== ''
-        ? (int) $this->marcaId
-        : null;
+        $nombre = trim($this->nombre);
+        $color = trim($this->color);
 
-    $botellasIniciales = (int) $this->botellasCompletas;
+        $marcaId = $this->marcaId !== ''
+            ? (int) $this->marcaId
+            : null;
 
-    $porcentajeInicial = (float) $this->porcentajeBotellaAbierta;
+        $botellasIniciales = (int) $this->botellasCompletas;
 
-    $stockMinimo = (float) $this->stockMinimoBotellas;
+        $porcentajeInicial = (float) $this->porcentajeBotellaAbierta;
 
-    DB::transaction(function () use (
-        $esCreacion,
-        $nombre,
-        $color,
-        $marcaId,
-        $botellasIniciales,
-        $porcentajeInicial,
-        $stockMinimo
-    ) {
+        $stockMinimo = (float) $this->stockMinimoBotellas;
 
-        /*
+        DB::transaction(function () use (
+            $esCreacion,
+            $nombre,
+            $color,
+            $marcaId,
+            $botellasIniciales,
+            $porcentajeInicial,
+            $stockMinimo
+        ) {
+
+            /*
         |--------------------------------------------------------------------------
         | Obtener y bloquear la tinta cuando estamos editando
         |--------------------------------------------------------------------------
         */
 
-        $tinta = null;
+            $tinta = null;
 
-        if (! $esCreacion) {
+            if (! $esCreacion) {
 
-            $tinta = Tinta::query()
-                ->whereKey($this->tintaId)
-                ->lockForUpdate()
-                ->firstOrFail();
-        }
+                $tinta = Tinta::query()
+                    ->whereKey($this->tintaId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
 
-        /*
+            /*
         |--------------------------------------------------------------------------
         | Validar que no exista una tinta duplicada
         |--------------------------------------------------------------------------
         */
 
-        $duplicada = Tinta::query()
-            ->whereRaw(
-                'LOWER(TRIM(nombre)) = ?',
-                [mb_strtolower($nombre)]
-            )
-            ->whereRaw(
-                'LOWER(TRIM(color)) = ?',
-                [mb_strtolower($color)]
-            )
-            ->when(
-                $marcaId !== null,
-                fn ($query) => $query->where(
-                    'marca_id',
-                    $marcaId
-                ),
-                fn ($query) => $query->whereNull(
-                    'marca_id'
+            $duplicada = Tinta::query()
+                ->whereRaw(
+                    'LOWER(TRIM(nombre)) = ?',
+                    [mb_strtolower($nombre)]
                 )
-            )
-            ->when(
-                ! $esCreacion,
-                fn ($query) => $query->where(
-                    'id',
-                    '!=',
-                    $this->tintaId
+                ->whereRaw(
+                    'LOWER(TRIM(color)) = ?',
+                    [mb_strtolower($color)]
                 )
-            )
-            ->exists();
+                ->when(
+                    $marcaId !== null,
+                    fn($query) => $query->where(
+                        'marca_id',
+                        $marcaId
+                    ),
+                    fn($query) => $query->whereNull(
+                        'marca_id'
+                    )
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
+                        'id',
+                        '!=',
+                        $this->tintaId
+                    )
+                )
+                ->exists();
 
-        if ($duplicada) {
+            if ($duplicada) {
 
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'nombre' =>
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'nombre' =>
                     'Ya existe una tinta con esta referencia, marca y color.',
-            ]);
-        }
+                ]);
+            }
 
-        /*
+            /*
         |--------------------------------------------------------------------------
         | Preparar datos generales
         |--------------------------------------------------------------------------
@@ -338,67 +346,66 @@ public function guardarTinta(): void
         |
         */
 
-        $datos = [
-            'nombre' => $nombre,
+            $datos = [
+                'nombre' => $nombre,
 
-            'marca_id' => $marcaId,
+                'marca_id' => $marcaId,
 
-            'color' => $color,
+                'color' => $color,
 
-            'presentacion' =>
+                'presentacion' =>
                 trim($this->presentacion) !== ''
                     ? trim($this->presentacion)
                     : null,
 
-            'stock_minimo_botellas' => $stockMinimo,
+                'stock_minimo_botellas' => $stockMinimo,
 
-            'observaciones' =>
+                'observaciones' =>
                 trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
 
-            'activo' => $this->activoTinta,
-        ];
+                'activo' => $this->activoTinta,
+            ];
 
-        /*
+            /*
         |--------------------------------------------------------------------------
         | Crear una nueva tinta
         |--------------------------------------------------------------------------
         */
 
-        if ($esCreacion) {
+            if ($esCreacion) {
 
-            // Solo al crear se registran existencias iniciales.
+                // Solo al crear se registran existencias iniciales.
 
-            $datos['botellas_completas'] =
-                $botellasIniciales;
+                $datos['botellas_completas'] =
+                    $botellasIniciales;
 
-            $datos['porcentaje_botella_abierta'] =
-                $porcentajeInicial;
+                $datos['porcentaje_botella_abierta'] =
+                    $porcentajeInicial;
 
-            $datos['creado_por'] = Auth::id();
+                $datos['creado_por'] = Auth::id();
 
-            $tinta = Tinta::create($datos);
+                $tinta = Tinta::create($datos);
 
-            $existenciaEquivalente = $botellasIniciales
-                + ($porcentajeInicial / 100);
+                $existenciaEquivalente = $botellasIniciales
+                    + ($porcentajeInicial / 100);
 
-            RegistrarAperturaInventario::registrar(
-                'tinta',
-                $tinta->id,
-                $existenciaEquivalente,
-                'Apertura inicial de tinta: '
-                    . $tinta->nombre
-                    . ' | Color: ' . $tinta->color
-                    . ' | Botellas completas: ' . $botellasIniciales
-                    . ' | Porcentaje de botella abierta: '
-                    . number_format($porcentajeInicial, 2, '.', '')
-                    . '%'
-            );
+                RegistrarAperturaInventario::registrar(
+                    'tinta',
+                    $tinta->id,
+                    $existenciaEquivalente,
+                    'Apertura inicial de tinta: '
+                        . $tinta->nombre
+                        . ' | Color: ' . $tinta->color
+                        . ' | Botellas completas: ' . $botellasIniciales
+                        . ' | Porcentaje de botella abierta: '
+                        . number_format($porcentajeInicial, 2, '.', '')
+                        . '%'
+                );
+            } else {
 
-        } else {
-
-            /*
+                /*
              * Al editar se conservan las botellas
              * y el porcentaje almacenados en la BD.
              *
@@ -406,21 +413,20 @@ public function guardarTinta(): void
              * son las encargadas de modificarlos.
              */
 
-            $tinta->update($datos);
-        }
+                $tinta->update($datos);
+            }
+        }, 3);
 
-    }, 3);
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Tinta registrada correctamente.'
+                : 'Tinta actualizada correctamente.'
+        );
 
-    session()->flash(
-        'mensaje',
-        $esCreacion
-            ? 'Tinta registrada correctamente.'
-            : 'Tinta actualizada correctamente.'
-    );
-
-    $this->cerrarModal();
-    $this->resetPage();
-}
+        $this->cerrarModal();
+        $this->resetPage();
+    }
 
 
 
@@ -438,6 +444,28 @@ public function guardarTinta(): void
                 ? 'Tinta activada correctamente.'
                 : 'Tinta desactivada correctamente.'
         );
+    }
+
+
+    public function abrirHistorial(int $id): void
+    {
+        $tinta = Tinta::findOrFail($id);
+
+        $this->historialTintaId = $tinta->id;
+
+        $this->historialTintaNombre =
+            $tinta->nombre . ' — ' . $tinta->color;
+
+        $this->mostrarHistorial = true;
+    }
+
+    public function cerrarHistorial(): void
+    {
+        $this->mostrarHistorial = false;
+
+        $this->historialTintaId = null;
+
+        $this->historialTintaNombre = '';
     }
 
 
@@ -524,12 +552,182 @@ public function guardarTinta(): void
             ->pluck('color');
 
 
+        /*
+|--------------------------------------------------------------------------
+| Historial completo de tinta
+|--------------------------------------------------------------------------
+*/
+
+        $eventosHistorial = collect();
+
+        if (
+            $this->mostrarHistorial
+            && $this->historialTintaId !== null
+        ) {
+            $tintaId = $this->historialTintaId;
+
+            /*
+     * 1. Aperturas, Entradas y Salidas
+     */
+            $movimientos = MovimientoInventarioDetalle::query()
+                ->with([
+                    'movimiento.usuario',
+                ])
+                ->where('tipo_item', 'tinta')
+                ->where('item_id', $tintaId)
+                ->whereHas('movimiento', function ($query) {
+                    $query->whereIn('tipo', [
+                        'apertura',
+                        'entrada',
+                        'salida',
+                    ]);
+                })
+                ->orderByDesc('id')
+                ->limit(100)
+                ->get();
+
+            foreach ($movimientos as $detalle) {
+
+                $movimiento = $detalle->movimiento;
+
+                if (! $movimiento) {
+                    continue;
+                }
+
+                $eventosHistorial->push([
+                    'tipo' => $movimiento->tipo,
+                    'fecha' => $movimiento->fecha_movimiento,
+
+                    'cantidad' => (float) $detalle->cantidad,
+                    'unidad' => 'botellas',
+
+                    'anterior' => (float) $detalle->existencia_anterior,
+                    'posterior' => (float) $detalle->existencia_posterior,
+
+                    'responsable' => $movimiento->usuario?->name
+                        ?? 'Usuario no disponible',
+
+                    'detalle' => $movimiento->observaciones ?? '',
+
+                    'orden_tipo' => 1,
+                    'orden_id' => $detalle->id,
+                ]);
+            }
+
+            /*
+     * 2. Recargas de impresoras
+     */
+            $recargas = RecargaTintaDetalle::query()
+                ->with([
+                    'recarga.usuario',
+                    'recarga.equipo',
+                ])
+                ->where('tinta_id', $tintaId)
+                ->orderByDesc('id')
+                ->limit(100)
+                ->get();
+
+            foreach ($recargas as $detalleRecarga) {
+
+                $recarga = $detalleRecarga->recarga;
+
+                if (! $recarga) {
+                    continue;
+                }
+
+                $equipo = $recarga->equipo;
+
+                $identificacionEquipo = $equipo
+                    ? (
+                        $equipo->numero_inventario
+                        ?: ($equipo->numero_serie ?: (
+                            $equipo->modelo ?: 'Sin identificación'
+                        ))
+                    )
+                    : 'Equipo no disponible';
+
+                $nivelAntes = (float) $detalleRecarga->porcentaje_antes;
+
+                $nivelDespues = (float) $detalleRecarga->porcentaje_despues;
+
+                $observaciones = trim(
+                    (string) ($recarga->observaciones ?? '')
+                );
+
+                $descripcion = 'Impresora: '
+                    . $identificacionEquipo
+                    . ' | Nivel antes: '
+                    . number_format($nivelAntes, 2, '.', '')
+                    . '% | Nivel después: '
+                    . number_format($nivelDespues, 2, '.', '')
+                    . '%';
+
+                if ($observaciones !== '') {
+                    $descripcion .= ' | ' . $observaciones;
+                }
+
+                $eventosHistorial->push([
+                    'tipo' => 'recarga',
+
+                    'fecha' => $recarga->created_at,
+
+                    'cantidad' =>
+                    (float) $detalleRecarga->porcentaje_agregado,
+
+                    'unidad' => '% de una botella',
+
+                    // Estos campos corresponden al inventario.
+                    // El detalle de recarga no almacena los saldos
+                    // anteriores y posteriores del almacén.
+                    'anterior' => null,
+                    'posterior' => null,
+
+                    'responsable' => $recarga->usuario?->name
+                        ?? 'Usuario no disponible',
+
+                    'detalle' => $descripcion,
+
+                    'orden_tipo' => 2,
+                    'orden_id' => $detalleRecarga->id,
+                ]);
+            }
+
+            /*
+     * 3. Unificar y ordenar todos los eventos
+     */
+            $eventosHistorial = $eventosHistorial
+                ->sort(function ($a, $b) {
+
+                    $fechaA = \Illuminate\Support\Carbon::parse(
+                        $a['fecha']
+                    )->getTimestamp();
+
+                    $fechaB = \Illuminate\Support\Carbon::parse(
+                        $b['fecha']
+                    )->getTimestamp();
+
+                    if ($fechaA !== $fechaB) {
+                        return $fechaB <=> $fechaA;
+                    }
+
+                    if ($a['orden_tipo'] !== $b['orden_tipo']) {
+                        return $b['orden_tipo'] <=> $a['orden_tipo'];
+                    }
+
+                    return $b['orden_id'] <=> $a['orden_id'];
+                })
+                ->take(50)
+                ->values();
+        }
+
+
         return view(
             'livewire.inventario.tintas.index',
             compact(
                 'tintas',
                 'marcas',
-                'colores'
+                'colores',
+                'eventosHistorial'
             )
         );
     }
