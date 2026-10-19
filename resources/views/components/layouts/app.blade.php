@@ -167,22 +167,43 @@
 
                 </div>
 
-                @role('Administrador')
+
+                {{-- Historial y Auditoría --}}
                 <div class="pt-3">
 
                     <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        Administración
+                        Historial y Auditoría
                     </p>
 
-
-
                     <a
-                        href="{{ route('administracion.usuarios') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                        href="{{ route('historial.movimientos') }}"
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800
+                        {{ request()->routeIs('historial.movimientos')
+                            ? 'bg-gray-800 text-white font-medium'
+                            : ''
+                        }}"
                     >
-                        Usuarios
+                        Historial de movimientos
                     </a>
 
+                </div>
+
+
+                @role('Administrador')
+                    <div class="pt-3">
+
+                        <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Administración
+                        </p>
+
+                        <a
+                            href="{{ route('administracion.usuarios') }}"
+                            class="block rounded-lg px-4 py-2 hover:bg-gray-800"
+                        >
+                            Usuarios
+                        </a>
+
+                    </div>
                 @endrole
 
             </nav>

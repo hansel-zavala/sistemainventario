@@ -17,6 +17,7 @@ use App\Livewire\Movimientos\Entradas\Index as EntradasIndex;
 use App\Livewire\Movimientos\Salidas\Index as SalidasIndex;
 use App\Livewire\Movimientos\Prestamos\Index as PrestamosIndex;
 use App\Livewire\Movimientos\Devoluciones\Index as DevolucionesIndex;
+use App\Livewire\Historial\Movimientos\Index as HistorialMovimientosIndex;
 
 Route::middleware('guest')->group(function () {
 
@@ -113,6 +114,11 @@ Route::middleware('auth')->group(function () {
         '/movimientos/devoluciones',
         DevolucionesIndex::class
     )->name('movimientos.devoluciones');
+
+    Route::get(
+        '/historial/movimientos',
+        HistorialMovimientosIndex::class
+    )->name('historial.movimientos');
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');
