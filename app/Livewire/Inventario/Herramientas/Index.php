@@ -8,6 +8,7 @@ use App\Models\PrestamoDetalle;
 use App\Models\Marca;
 use App\Models\UnidadMedida;
 use App\Models\MovimientoInventario;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -212,12 +213,12 @@ class Index extends Component
     {
         return [
             'nuevoNombreCatalogo.required' => $this->tipoCatalogo === 'unidad_medida'
-                    ? 'El nombre en singular es obligatorio.'
-                    : 'El nombre es obligatorio.',
+                ? 'El nombre en singular es obligatorio.'
+                : 'El nombre es obligatorio.',
 
             'nuevoNombreCatalogo.max' => $this->tipoCatalogo === 'unidad_medida'
-                    ? 'El nombre en singular no puede superar los 50 caracteres.'
-                    : 'El nombre no puede superar los 150 caracteres.',
+                ? 'El nombre en singular no puede superar los 50 caracteres.'
+                : 'El nombre no puede superar los 150 caracteres.',
 
             'nuevoNombrePluralUnidad.required' => 'El nombre en plural es obligatorio.',
 
@@ -467,245 +468,339 @@ class Index extends Component
         ];
     }
 
-    
-public function guardarHerramienta(): void
-{
-    $this->validate();
 
-    $codigo = trim($this->codigoInterno);
+    public function guardarHerramienta(): void
+    {
+        $this->validate();
 
-    // El stock mínimo puede editarse.
-    $stockMinimo = (float) $this->stockMinimo;
+        $codigo = trim($this->codigoInterno);
 
-    $esCreacion = $this->herramientaId === null;
+        // El stock mínimo puede editarse.
+        $stockMinimo = (float) $this->stockMinimo;
 
-    // Esta cantidad solo se utilizará al crear.
-    $cantidadInicial = $this->tipoControl === 'individual'
-        ? 1.0
-        : (float) $this->cantidadActual;
+        $esCreacion = $this->herramientaId === null;
 
-    DB::transaction(function () use (
-        $codigo,
-        $stockMinimo,
-        $esCreacion,
-        $cantidadInicial
-    ) {
-        /*
+        // Esta cantidad solo se utilizará al crear.
+        $cantidadInicial = $this->tipoControl === 'individual'
+            ? 1.0
+            : (float) $this->cantidadActual;
+
+        DB::transaction(function () use (
+            $codigo,
+            $stockMinimo,
+            $esCreacion,
+            $cantidadInicial
+        ) {
+            /*
          * Bloquear el registro durante la edición.
          */
-        $herramienta = null;
+            $herramienta = null;
 
-        if (! $esCreacion) {
-            $herramienta = Herramienta::query()
-                ->whereKey($this->herramientaId)
-                ->lockForUpdate()
-                ->firstOrFail();
-        }
+            if (! $esCreacion) {
+                $herramienta = Herramienta::query()
+                    ->whereKey($this->herramientaId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
 
-        /*
+            /*
          * Validar código interno único.
          */
-        if ($this->tipoControl === 'individual') {
-            $codigoDuplicado = Herramienta::query()
-                ->whereRaw(
-                    'LOWER(TRIM(codigo_interno)) = ?',
-                    [mb_strtolower($codigo)]
-                )
-                ->when(
-                    ! $esCreacion,
-                    fn ($query) => $query->where(
-                        'id',
-                        '!=',
-                        $this->herramientaId
+            if ($this->tipoControl === 'individual') {
+                $codigoDuplicado = Herramienta::query()
+                    ->whereRaw(
+                        'LOWER(TRIM(codigo_interno)) = ?',
+                        [mb_strtolower($codigo)]
                     )
-                )
-                ->exists();
+                    ->when(
+                        ! $esCreacion,
+                        fn($query) => $query->where(
+                            'id',
+                            '!=',
+                            $this->herramientaId
+                        )
+                    )
+                    ->exists();
 
-            if ($codigoDuplicado) {
-                throw ValidationException::withMessages([
-                    'codigoInterno' =>
+                if ($codigoDuplicado) {
+                    throw ValidationException::withMessages([
+                        'codigoInterno' =>
                         'Ya existe una herramienta con este código interno.',
-                ]);
+                    ]);
+                }
             }
-        }
 
-        /*
+            /*
          * Validar unidad de medida.
          */
-        $unidad = UnidadMedida::findOrFail(
-            $this->unidadMedidaId
-        );
+            $unidad = UnidadMedida::findOrFail(
+                $this->unidadMedidaId
+            );
 
-        if (! $unidad->permite_decimales) {
-            if (
-                fmod($stockMinimo, 1.0) !== 0.0
-                || (
-                    $esCreacion
-                    && fmod($cantidadInicial, 1.0) !== 0.0
-                )
-            ) {
-                throw ValidationException::withMessages([
-                    'stockMinimo' =>
+            if (! $unidad->permite_decimales) {
+                if (
+                    fmod($stockMinimo, 1.0) !== 0.0
+                    || (
+                        $esCreacion
+                        && fmod($cantidadInicial, 1.0) !== 0.0
+                    )
+                ) {
+                    throw ValidationException::withMessages([
+                        'stockMinimo' =>
                         'La unidad de medida no permite cantidades decimales.',
-                ]);
+                    ]);
+                }
             }
-        }
 
-        /*
+            /*
          * Comprobar préstamos pendientes.
          */
-        $cantidadPrestada = 0.0;
+            $cantidadPrestada = 0.0;
 
-        if (! $esCreacion) {
-            /*
+            if (! $esCreacion) {
+                /*
             |--------------------------------------------------------------------------
             | Impedir cambiar el tipo de control
             |--------------------------------------------------------------------------
             */
-            if ($this->tipoControl !== $herramienta->tipo_control) {
-                throw ValidationException::withMessages([
-                    'tipoControl' =>
+                if ($this->tipoControl !== $herramienta->tipo_control) {
+                    throw ValidationException::withMessages([
+                        'tipoControl' =>
                         'El tipo de control no puede modificarse después del registro de la herramienta.',
-                ]);
-            }
+                    ]);
+                }
 
-            /*
+                /*
             |--------------------------------------------------------------------------
             | Consultar las cantidades pendientes de devolución
             |--------------------------------------------------------------------------
             */
-            $cantidadPrestada = (float) PrestamoDetalle::query()
-                ->where('herramienta_id', $herramienta->id)
-                ->where('estado', 'prestado')
-                ->selectRaw(
-                    'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS pendiente'
-                )
-                ->value('pendiente');
+                $cantidadPrestada = (float) PrestamoDetalle::query()
+                    ->where('herramienta_id', $herramienta->id)
+                    ->where('estado', 'prestado')
+                    ->selectRaw(
+                        'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS pendiente'
+                    )
+                    ->value('pendiente');
 
 
-            /*
+                /*
              * No permitir desactivar herramientas prestadas.
              */
-            if (
-                $cantidadPrestada > 0
-                && ! $this->activoHerramienta
-            ) {
-                throw ValidationException::withMessages([
-                    'activoHerramienta' =>
+                if (
+                    $cantidadPrestada > 0
+                    && ! $this->activoHerramienta
+                ) {
+                    throw ValidationException::withMessages([
+                        'activoHerramienta' =>
                         'No puede desactivar una herramienta que tiene préstamos pendientes.',
-                ]);
-            }
+                    ]);
+                }
 
-            /*
+                /*
              * No permitir cambiar la unidad a una que
              * no admite decimales si hay existencias
              * o préstamos fraccionarios.
              */
-            if (
-                ! $unidad->permite_decimales
-                && (
-                    fmod(
-                        (float) $herramienta->cantidad_actual,
-                        1.0
-                    ) !== 0.0
-                    || fmod($cantidadPrestada, 1.0) !== 0.0
-                )
-            ) {
-                throw ValidationException::withMessages([
-                    'unidadMedidaId' =>
+                if (
+                    ! $unidad->permite_decimales
+                    && (
+                        fmod(
+                            (float) $herramienta->cantidad_actual,
+                            1.0
+                        ) !== 0.0
+                        || fmod($cantidadPrestada, 1.0) !== 0.0
+                    )
+                ) {
+                    throw ValidationException::withMessages([
+                        'unidadMedidaId' =>
                         'La existencia o los préstamos pendientes contienen decimales incompatibles con esta unidad.',
-                ]);
+                    ]);
+                }
             }
-        }
 
-        /*
+            /*
          * Datos generales.
          * IMPORTANTE: cantidad_actual no se incluye
          * al editar una herramienta.
          */
-        $datos = [
-            'nombre' => trim($this->nombre),
+            $datos = [
+                'nombre' => trim($this->nombre),
 
-            'categoria_id' => (int) $this->categoriaId,
+                'categoria_id' => (int) $this->categoriaId,
 
-            'marca_id' => $this->marcaId !== ''
-                ? (int) $this->marcaId
-                : null,
+                'marca_id' => $this->marcaId !== ''
+                    ? (int) $this->marcaId
+                    : null,
 
-            'unidad_medida_id' =>
+                'unidad_medida_id' =>
                 (int) $this->unidadMedidaId,
 
-            'tipo_control' => $this->tipoControl,
+                'tipo_control' => $this->tipoControl,
 
-            'codigo_interno' => $codigo !== ''
-                ? $codigo
-                : null,
+                'codigo_interno' => $codigo !== ''
+                    ? $codigo
+                    : null,
 
-            'stock_minimo' =>
+                'stock_minimo' =>
                 $this->tipoControl === 'individual'
                     ? 0
                     : $stockMinimo,
 
-            'observaciones' =>
+                'observaciones' =>
                 trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
 
-            'activo' => $this->activoHerramienta,
-        ];
-
-        if ($esCreacion) {
-            /*
-             * La existencia inicial solamente se
-             * establece al registrar por primera vez.
-             */
-            $datos['cantidad_actual'] = $cantidadInicial;
-            $datos['creado_por'] = Auth::id();
-
-            $herramienta = Herramienta::create($datos);
-
-            RegistrarAperturaInventario::registrar(
-                'herramienta',
-                $herramienta->id,
-                $cantidadInicial,
-                'Apertura inicial de la herramienta: '
-                    . $herramienta->nombre
-);
-        } else {
-            /*
-             * La existencia se conserva exactamente
-             * como está en la base de datos.
-             */
-            $herramienta->update($datos);
-        }
-    }, 3);
-
-    session()->flash(
-        'mensaje',
-        $esCreacion
-            ? 'Herramienta registrada correctamente.'
-            : 'Herramienta actualizada correctamente.'
-    );
-
-    $this->cerrarModal();
-    $this->resetPage();
-}
+                'activo' => $this->activoHerramienta,
+            ];
 
 
-    
+            if ($esCreacion) {
+
+                /*
+    |--------------------------------------------------------------------------
+    | Crear herramienta
+    |--------------------------------------------------------------------------
+    */
+
+                $datos['cantidad_actual'] = $cantidadInicial;
+                $datos['creado_por'] = Auth::id();
+
+                $herramienta = Herramienta::create($datos);
+
+                /*
+     * Registrar apertura inicial.
+     * Conservamos el funcionamiento anterior.
+     */
+                RegistrarAperturaInventario::registrar(
+                    'herramienta',
+                    $herramienta->id,
+                    $cantidadInicial,
+                    'Apertura inicial de la herramienta: '
+                        . $herramienta->nombre
+                );
+
+                /*
+    |--------------------------------------------------------------------------
+    | Auditoría de creación
+    |--------------------------------------------------------------------------
+    */
+
+                Auditoria::create([
+                    'modelo' => Herramienta::class,
+                    'registro_id' => $herramienta->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $herramienta->only([
+                        'nombre',
+                        'categoria_id',
+                        'marca_id',
+                        'unidad_medida_id',
+                        'tipo_control',
+                        'codigo_interno',
+                        'cantidad_actual',
+                        'stock_minimo',
+                        'observaciones',
+                        'activo',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /*
+    |--------------------------------------------------------------------------
+    | Auditoría de modificación
+    |--------------------------------------------------------------------------
+    |
+    | fill() prepara los nuevos datos sin guardarlos.
+    | getDirty() identifica los campos que cambiaron.
+    |
+    */
+
+                $herramienta->fill($datos);
+
+                $valoresNuevos = $herramienta->getDirty();
+
+                /*
+     * Solamente registrar si realmente hay cambios.
+     */
+                if (! empty($valoresNuevos)) {
+
+                    /*
+         * Obtener los valores anteriores de los
+         * campos que efectivamente cambiaron.
+         */
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+
+                        $valoresAnteriores[$campo] =
+                            $herramienta->getRawOriginal($campo);
+                    }
+
+                    /*
+         * Guardar los cambios administrativos.
+         * No se modifica cantidad_actual.
+         */
+                    $herramienta->save();
+
+                    /*
+         * Registrar la auditoría dentro de la misma
+         * transacción que actualiza la herramienta.
+         */
+                    Auditoria::create([
+                        'modelo' => Herramienta::class,
+                        'registro_id' => $herramienta->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+        }, 3);
+
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Herramienta registrada correctamente.'
+                : 'Herramienta actualizada correctamente.'
+        );
+
+        $this->cerrarModal();
+        $this->resetPage();
+    }
+
+
+
+
     public function cambiarEstado(int $id): void
     {
         DB::transaction(function () use ($id) {
+
+            /*
+        |--------------------------------------------------------------------------
+        | Bloquear la herramienta
+        |--------------------------------------------------------------------------
+        */
 
             $herramienta = Herramienta::query()
                 ->whereKey($id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Si está activa, se intenta desactivar.
-            $desactivar = (bool) $herramienta->activo;
+            $estadoAnterior = (bool) $herramienta->activo;
 
-            if ($desactivar) {
+            $nuevoEstado = ! $estadoAnterior;
+
+            /*
+        |--------------------------------------------------------------------------
+        | Validar préstamos pendientes
+        |--------------------------------------------------------------------------
+        */
+
+            if (! $nuevoEstado) {
 
                 $tienePrestamosPendientes = PrestamoDetalle::query()
                     ->where('herramienta_id', $herramienta->id)
@@ -718,26 +813,65 @@ public function guardarHerramienta(): void
                     ->exists();
 
                 if ($tienePrestamosPendientes) {
+
                     throw ValidationException::withMessages([
                         'estadoHerramienta' =>
-                            'No puede desactivar esta herramienta porque tiene préstamos pendientes de devolución.',
+                        'No puede desactivar esta herramienta porque tiene préstamos pendientes de devolución.',
                     ]);
                 }
             }
 
+            /*
+        |--------------------------------------------------------------------------
+        | Actualizar estado
+        |--------------------------------------------------------------------------
+        */
+
             $herramienta->update([
-                'activo' => ! $herramienta->activo,
+                'activo' => $nuevoEstado,
             ]);
+
+            /*
+        |--------------------------------------------------------------------------
+        | Registrar auditoría del cambio de estado
+        |--------------------------------------------------------------------------
+        */
+
+            Auditoria::create([
+                'modelo' => Herramienta::class,
+
+                'registro_id' => $herramienta->id,
+
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+
+                'usuario_id' => Auth::id(),
+            ]);
+
+            /*
+        |--------------------------------------------------------------------------
+        | Mensaje de confirmación
+        |--------------------------------------------------------------------------
+        */
 
             session()->flash(
                 'mensaje',
-                $herramienta->activo
+                $nuevoEstado
                     ? 'Herramienta activada correctamente.'
                     : 'Herramienta desactivada correctamente.'
             );
-
         }, 3);
     }
+
 
 
     public function abrirHistorial(int $id): void
@@ -760,7 +894,7 @@ public function guardarHerramienta(): void
         $this->historialHerramientaNombre = '';
     }
 
-    
+
     public function render()
     {
         $herramientas = Herramienta::query()
@@ -773,294 +907,293 @@ public function guardarHerramienta(): void
                 'categoria',
                 'marca',
                 'unidadMedida',
-        ])
-        ->when(
-            $this->buscar,
-            function ($query) {
-                $buscar = '%' . trim($this->buscar) . '%';
+            ])
+            ->when(
+                $this->buscar,
+                function ($query) {
+                    $buscar = '%' . trim($this->buscar) . '%';
 
-                $query->where(function ($subQuery) use ($buscar) {
-                    $subQuery
-                        ->where('nombre', 'like', $buscar)
-                        ->orWhere('codigo_interno', 'like', $buscar)
-                        ->orWhereHas('marca', function ($marcaQuery) use ($buscar) {
-                            $marcaQuery->where('nombre', 'like', $buscar);
-                        });
-                });
-            }
-        )
-        ->when(
-            $this->filtroTipo,
-            function ($query) {
-                $query->where('tipo_control', $this->filtroTipo);
-            }
-        )
-        ->when(
-            $this->filtroEstado !== '',
-            function ($query) {
-                $query->where(
-                    'activo',
-                    $this->filtroEstado === 'activo'
-                );
-            }
-        )
-        ->orderBy('nombre')
-        ->paginate(10);
+                    $query->where(function ($subQuery) use ($buscar) {
+                        $subQuery
+                            ->where('nombre', 'like', $buscar)
+                            ->orWhere('codigo_interno', 'like', $buscar)
+                            ->orWhereHas('marca', function ($marcaQuery) use ($buscar) {
+                                $marcaQuery->where('nombre', 'like', $buscar);
+                            });
+                    });
+                }
+            )
+            ->when(
+                $this->filtroTipo,
+                function ($query) {
+                    $query->where('tipo_control', $this->filtroTipo);
+                }
+            )
+            ->when(
+                $this->filtroEstado !== '',
+                function ($query) {
+                    $query->where(
+                        'activo',
+                        $this->filtroEstado === 'activo'
+                    );
+                }
+            )
+            ->orderBy('nombre')
+            ->paginate(10);
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | Calcular préstamos pendientes de las herramientas de esta página
     |--------------------------------------------------------------------------
     */
-    $idsHerramientas = $herramientas->getCollection()
-        ->pluck('id')
-        ->all();
+        $idsHerramientas = $herramientas->getCollection()
+            ->pluck('id')
+            ->all();
 
-    $pendientes = PrestamoDetalle::query()
-        ->whereIn('herramienta_id', $idsHerramientas)
-        ->where('estado', 'prestado')
-        ->select('herramienta_id')
-        ->selectRaw(
-            'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS total_pendiente'
-        )
-        ->groupBy('herramienta_id')
-        ->pluck('total_pendiente', 'herramienta_id');
+        $pendientes = PrestamoDetalle::query()
+            ->whereIn('herramienta_id', $idsHerramientas)
+            ->where('estado', 'prestado')
+            ->select('herramienta_id')
+            ->selectRaw(
+                'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS total_pendiente'
+            )
+            ->groupBy('herramienta_id')
+            ->pluck('total_pendiente', 'herramienta_id');
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | Agregar cantidades calculadas a los resultados
     |--------------------------------------------------------------------------
     */
-    foreach ($herramientas as $herramienta) {
+        foreach ($herramientas as $herramienta) {
 
-        $cantidadPrestada = round(
-            (float) ($pendientes[$herramienta->id] ?? 0),
-            2
-        );
-
-        $cantidadDisponible = max(
-            0,
-            round(
-                (float) $herramienta->cantidad_actual
-                    - $cantidadPrestada,
+            $cantidadPrestada = round(
+                (float) ($pendientes[$herramienta->id] ?? 0),
                 2
-            )
-        );
+            );
 
-        $herramienta->setAttribute(
-            'cantidad_prestada_pendiente',
-            $cantidadPrestada
-        );
+            $cantidadDisponible = max(
+                0,
+                round(
+                    (float) $herramienta->cantidad_actual
+                        - $cantidadPrestada,
+                    2
+                )
+            );
 
-        $herramienta->setAttribute(
-            'cantidad_disponible_calculada',
-            $cantidadDisponible
-        );
-    }
+            $herramienta->setAttribute(
+                'cantidad_prestada_pendiente',
+                $cantidadPrestada
+            );
 
-    $categorias = Categoria::query()
-        ->where('activo', true)
-        ->where('aplica_a', 'herramienta')
-        ->orderBy('nombre')
-        ->get();
+            $herramienta->setAttribute(
+                'cantidad_disponible_calculada',
+                $cantidadDisponible
+            );
+        }
 
-    $marcas = Marca::query()
-        ->where('activo', true)
-        ->orderBy('nombre')
-        ->get();
+        $categorias = Categoria::query()
+            ->where('activo', true)
+            ->where('aplica_a', 'herramienta')
+            ->orderBy('nombre')
+            ->get();
 
-    $unidades = UnidadMedida::query()
-        ->where('activo', true)
-        ->orderBy('nombre_singular')
-        ->get();
+        $marcas = Marca::query()
+            ->where('activo', true)
+            ->orderBy('nombre')
+            ->get();
+
+        $unidades = UnidadMedida::query()
+            ->where('activo', true)
+            ->orderBy('nombre_singular')
+            ->get();
 
 
-    
-/*
+
+        /*
 |--------------------------------------------------------------------------
 | Historial completo de la herramienta
 |--------------------------------------------------------------------------
 */
 
-    $eventosHistorial = collect();
+        $eventosHistorial = collect();
 
-    if (
-        $this->mostrarHistorial
-        && $this->historialHerramientaId !== null
-    ) {
-        $herramientaId = $this->historialHerramientaId;
+        if (
+            $this->mostrarHistorial
+            && $this->historialHerramientaId !== null
+        ) {
+            $herramientaId = $this->historialHerramientaId;
 
-        /*
+            /*
          * 1. Aperturas, Entradas y Salidas.
         */
-        $movimientos = MovimientoInventario::query()
-            ->with([
-                'usuario',
-                'detalles' => function ($query) use ($herramientaId) {
+            $movimientos = MovimientoInventario::query()
+                ->with([
+                    'usuario',
+                    'detalles' => function ($query) use ($herramientaId) {
+                        $query
+                            ->where('tipo_item', 'herramienta')
+                            ->where('item_id', $herramientaId);
+                    },
+                ])
+                ->whereIn('tipo', [
+                    'apertura',
+                    'entrada',
+                    'salida',
+                ])
+                ->whereHas('detalles', function ($query) use ($herramientaId) {
                     $query
                         ->where('tipo_item', 'herramienta')
                         ->where('item_id', $herramientaId);
-                },
-            ])
-            ->whereIn('tipo', [
-                'apertura',
-                'entrada',
-                'salida',
-            ])
-            ->whereHas('detalles', function ($query) use ($herramientaId) {
-                $query
-                    ->where('tipo_item', 'herramienta')
-                    ->where('item_id', $herramientaId);
-            })
-            ->orderByDesc('fecha_movimiento')
-            ->limit(100)
-            ->get();
+                })
+                ->orderByDesc('fecha_movimiento')
+                ->limit(100)
+                ->get();
 
-        foreach ($movimientos as $movimiento) {
-            foreach ($movimiento->detalles as $detalle) {
-                $eventosHistorial->push([
-                    'tipo' => $movimiento->tipo,
-                    'fecha' => $movimiento->fecha_movimiento,
-                    'cantidad' => (float) $detalle->cantidad,
-                    'anterior' => (float) $detalle->existencia_anterior,
-                    'posterior' => (float) $detalle->existencia_posterior,
-                    'responsable' => $movimiento->usuario?->name
-                        ?? 'Usuario no disponible',
-                    'detalle' => $movimiento->observaciones ?? '',
-                    'orden' => $movimiento->id,
-                ]);
+            foreach ($movimientos as $movimiento) {
+                foreach ($movimiento->detalles as $detalle) {
+                    $eventosHistorial->push([
+                        'tipo' => $movimiento->tipo,
+                        'fecha' => $movimiento->fecha_movimiento,
+                        'cantidad' => (float) $detalle->cantidad,
+                        'anterior' => (float) $detalle->existencia_anterior,
+                        'posterior' => (float) $detalle->existencia_posterior,
+                        'responsable' => $movimiento->usuario?->name
+                            ?? 'Usuario no disponible',
+                        'detalle' => $movimiento->observaciones ?? '',
+                        'orden' => $movimiento->id,
+                    ]);
+                }
             }
-        }
 
-        /*
+            /*
          * 2. Préstamos de esta herramienta.
          *
          * Incluye herramientas individuales y por cantidad.
          */
-        $prestamos = PrestamoDetalle::query()
-            ->with([
-                'prestamo.departamentoDestino',
-                'prestamo.usuario',
-                'devoluciones.usuario',
-                'usuarioRecibe',
-            ])
-            ->where('herramienta_id', $herramientaId)
-            ->orderByDesc('id')
-            ->limit(100)
-            ->get();
+            $prestamos = PrestamoDetalle::query()
+                ->with([
+                    'prestamo.departamentoDestino',
+                    'prestamo.usuario',
+                    'devoluciones.usuario',
+                    'usuarioRecibe',
+                ])
+                ->where('herramienta_id', $herramientaId)
+                ->orderByDesc('id')
+                ->limit(100)
+                ->get();
 
-        foreach ($prestamos as $prestamoDetalle) {
+            foreach ($prestamos as $prestamoDetalle) {
 
-            $prestamo = $prestamoDetalle->prestamo;
+                $prestamo = $prestamoDetalle->prestamo;
 
-            if (! $prestamo) {
-                continue;
-            }
+                if (! $prestamo) {
+                    continue;
+                }
 
-            $departamento = $prestamo->departamentoDestino?->nombre
-                ?? 'Sin departamento';
+                $departamento = $prestamo->departamentoDestino?->nombre
+                    ?? 'Sin departamento';
 
-            $persona = $prestamo->persona_recibe
-                ?: 'No especificada';
+                $persona = $prestamo->persona_recibe
+                    ?: 'No especificada';
 
-            /*
+                /*
              * Evento del préstamo inicial.
              */
-            $eventosHistorial->push([
-                'tipo' => 'prestamo',
-                'fecha' => $prestamo->fecha_prestamo,
-                'cantidad' => (float) $prestamoDetalle->cantidad_prestada,
-                'anterior' => null,
-                'posterior' => null,
-                'responsable' => $prestamo->usuario?->name
-                    ?? 'Usuario no disponible',
-                'detalle' => 'Departamento: ' . $departamento
-                    . ' | Recibe: ' . $persona,
-                'orden' => $prestamoDetalle->id,
-            ]);
-
-            /*
-             * 3. Cada devolución parcial o completa.
-             */
-            foreach ($prestamoDetalle->devoluciones as $devolucion) {
-
                 $eventosHistorial->push([
-                    'tipo' => 'devolucion',
-                    'fecha' => $devolucion->fecha_devolucion,
-                    'cantidad' => (float) $devolucion->cantidad,
+                    'tipo' => 'prestamo',
+                    'fecha' => $prestamo->fecha_prestamo,
+                    'cantidad' => (float) $prestamoDetalle->cantidad_prestada,
                     'anterior' => null,
                     'posterior' => null,
-                    'responsable' => $devolucion->usuario?->name
+                    'responsable' => $prestamo->usuario?->name
                         ?? 'Usuario no disponible',
-                    'detalle' => 'Devolución del préstamo #'
-                        . $prestamo->id
-                        . (
-                            $devolucion->observaciones
+                    'detalle' => 'Departamento: ' . $departamento
+                        . ' | Recibe: ' . $persona,
+                    'orden' => $prestamoDetalle->id,
+                ]);
+
+                /*
+             * 3. Cada devolución parcial o completa.
+             */
+                foreach ($prestamoDetalle->devoluciones as $devolucion) {
+
+                    $eventosHistorial->push([
+                        'tipo' => 'devolucion',
+                        'fecha' => $devolucion->fecha_devolucion,
+                        'cantidad' => (float) $devolucion->cantidad,
+                        'anterior' => null,
+                        'posterior' => null,
+                        'responsable' => $devolucion->usuario?->name
+                            ?? 'Usuario no disponible',
+                        'detalle' => 'Devolución del préstamo #'
+                            . $prestamo->id
+                            . (
+                                $devolucion->observaciones
                                 ? ' | ' . $devolucion->observaciones
                                 : ''
-                        ),
-                'orden' => $devolucion->id,
-            ]);
-        }
+                            ),
+                        'orden' => $devolucion->id,
+                    ]);
+                }
 
-        /*
+                /*
          * Compatibilidad con devoluciones anteriores
          * a la creación de prestamo_devoluciones.
          *
          * Solo se incorpora este registro cuando
          * no existen eventos individuales.
          */
-        if (
-            $prestamoDetalle->devoluciones->isEmpty()
-            && $prestamoDetalle->estado === 'devuelto'
-            && $prestamoDetalle->fecha_devolucion
-        ) {
-            $eventosHistorial->push([
-                'tipo' => 'devolucion',
-                'fecha' => $prestamoDetalle->fecha_devolucion,
-                'cantidad' => (float) $prestamoDetalle->cantidad_devuelta,
-                'anterior' => null,
-                'posterior' => null,
-                'responsable' => $prestamoDetalle->usuarioRecibe?->name
-                    ?? 'Usuario no disponible',
-                'detalle' => 'Devolución registrada anteriormente'
-                    . ' | Préstamo #' . $prestamo->id,
-                'orden' => $prestamoDetalle->id,
-            ]);
-        }
-    }
+                if (
+                    $prestamoDetalle->devoluciones->isEmpty()
+                    && $prestamoDetalle->estado === 'devuelto'
+                    && $prestamoDetalle->fecha_devolucion
+                ) {
+                    $eventosHistorial->push([
+                        'tipo' => 'devolucion',
+                        'fecha' => $prestamoDetalle->fecha_devolucion,
+                        'cantidad' => (float) $prestamoDetalle->cantidad_devuelta,
+                        'anterior' => null,
+                        'posterior' => null,
+                        'responsable' => $prestamoDetalle->usuarioRecibe?->name
+                            ?? 'Usuario no disponible',
+                        'detalle' => 'Devolución registrada anteriormente'
+                            . ' | Préstamo #' . $prestamo->id,
+                        'orden' => $prestamoDetalle->id,
+                    ]);
+                }
+            }
 
-    /*
+            /*
      * Ordenar todas las operaciones por fecha,
      * de la más reciente a la más antigua.
      */
-    $eventosHistorial = $eventosHistorial
-        ->sort(function ($a, $b) {
-            $fechaA = Carbon::parse($a['fecha'])->getTimestamp();
-            $fechaB = Carbon::parse($b['fecha'])->getTimestamp();
+            $eventosHistorial = $eventosHistorial
+                ->sort(function ($a, $b) {
+                    $fechaA = Carbon::parse($a['fecha'])->getTimestamp();
+                    $fechaB = Carbon::parse($b['fecha'])->getTimestamp();
 
-            if ($fechaA !== $fechaB) {
-                return $fechaB <=> $fechaA;
-            }
+                    if ($fechaA !== $fechaB) {
+                        return $fechaB <=> $fechaA;
+                    }
 
-            return $b['orden'] <=> $a['orden'];
-        })
-        ->take(50)
-        ->values();
-}
+                    return $b['orden'] <=> $a['orden'];
+                })
+                ->take(50)
+                ->values();
+        }
 
 
 
-    return view(
-        'livewire.inventario.herramientas.index',
-        compact(
-            'herramientas',
-            'categorias',
-            'marcas',
-            'unidades',
-            'eventosHistorial'
-        )
-    );
+        return view(
+            'livewire.inventario.herramientas.index',
+            compact(
+                'herramientas',
+                'categorias',
+                'marcas',
+                'unidades',
+                'eventosHistorial'
+            )
+        );
     }
-
 }
