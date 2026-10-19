@@ -343,6 +343,15 @@
                                         }}
                                     </button>
 
+                                    <button
+                                        type="button"
+                                        wire:click="abrirHistorial({{ $herramienta->id }})"
+                                        class="font-medium text-indigo-600 hover:text-indigo-800"
+                                    >
+                                        Historial
+                                    </button>
+
+
                                 </div>
 
                             </td>
@@ -816,6 +825,221 @@
         </div>
 
     @endif
+
+
+    {{-- Modal de historial de herramienta --}}
+    
+{{-- Modal de historial completo de herramienta --}}
+@if ($mostrarHistorial)
+
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-black/50 px-4 py-8">
+
+        <div class="mx-auto w-full max-w-6xl rounded-xl bg-white p-6 shadow-xl">
+
+            {{-- Encabezado --}}
+            <div class="mb-6 flex items-start justify-between gap-4">
+
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">
+                        Historial completo de herramienta
+                    </h2>
+
+                    <p class="mt-1 text-sm text-gray-500">
+                        {{ $historialHerramientaNombre }}
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    wire:click="cerrarHistorial"
+                    class="text-2xl text-gray-400 hover:text-gray-600"
+                >
+                    &times;
+                </button>
+
+            </div>
+
+            <p class="mb-4 text-sm text-gray-600">
+                Consulte las aperturas, entradas, salidas,
+                préstamos y devoluciones de esta herramienta.
+            </p>
+
+            {{-- Tabla de historial --}}
+            @if ($eventosHistorial->isEmpty())
+
+                <div class="rounded-lg bg-gray-50 px-5 py-10 text-center text-sm text-gray-500">
+                    Esta herramienta todavía no tiene movimientos
+                    registrados en el historial.
+                </div>
+
+            @else
+
+                <div class="overflow-x-auto rounded-lg border border-gray-200">
+
+                    <table class="w-full text-sm">
+
+                        <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500">
+
+                            <tr>
+                                <th class="px-4 py-3">Fecha</th>
+                                <th class="px-4 py-3">Movimiento</th>
+                                <th class="px-4 py-3">Cantidad</th>
+                                <th class="px-4 py-3">Anterior</th>
+                                <th class="px-4 py-3">Posterior</th>
+                                <th class="px-4 py-3">Responsable / Detalle</th>
+                            </tr>
+
+                        </thead>
+
+                        <tbody class="divide-y divide-gray-200">
+
+                            @foreach ($eventosHistorial as $evento)
+
+                                <tr wire:key="evento-historial-{{ $loop->index }}"
+                                    class="hover:bg-gray-50">
+
+                                    {{-- Fecha --}}
+                                    <td class="whitespace-nowrap px-4 py-3 text-gray-600">
+
+                                        {{ \Illuminate\Support\Carbon::parse($evento['fecha'])->format('d/m/Y H:i') }}
+
+                                    </td>
+
+                                    {{-- Tipo de movimiento --}}
+                                    <td class="px-4 py-3">
+
+                                        @switch($evento['tipo'])
+
+                                            @case('apertura')
+                                                <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800">
+                                                    Apertura
+                                                </span>
+                                                @break
+
+                                            @case('entrada')
+                                                <span class="rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">
+                                                    Entrada
+                                                </span>
+                                                @break
+
+                                            @case('salida')
+                                                <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                                                    Salida
+                                                </span>
+                                                @break
+
+                                            @case('prestamo')
+                                                <span class="rounded-full bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-800">
+                                                    Préstamo
+                                                </span>
+                                                @break
+
+                                            @case('devolucion')
+                                                <span class="rounded-full bg-teal-100 px-2 py-1 text-xs font-semibold text-teal-800">
+                                                    Devolución
+                                                </span>
+                                                @break
+
+                                        @endswitch
+
+                                    </td>
+
+                                    {{-- Cantidad --}}
+                                    <td class="px-4 py-3 font-semibold text-gray-800">
+
+                                        {{ number_format(
+                                            (float) $evento['cantidad'],
+                                            2,
+                                            '.',
+                                            ''
+                                        ) }}
+
+                                    </td>
+
+                                    {{-- Existencia anterior --}}
+                                    <td class="px-4 py-3 text-gray-600">
+
+                                        {{ $evento['anterior'] !== null
+                                            ? number_format(
+                                                (float) $evento['anterior'],
+                                                2,
+                                                '.',
+                                                ''
+                                            )
+                                            : '—'
+                                        }}
+
+                                    </td>
+
+                                    {{-- Existencia posterior --}}
+                                    <td class="px-4 py-3 text-gray-600">
+
+                                        {{ $evento['posterior'] !== null
+                                            ? number_format(
+                                                (float) $evento['posterior'],
+                                                2,
+                                                '.',
+                                                ''
+                                            )
+                                            : '—'
+                                        }}
+
+                                    </td>
+
+                                    {{-- Responsable y observaciones --}}
+                                    <td class="min-w-56 px-4 py-3">
+
+                                        <div class="font-medium text-gray-800">
+                                            {{ $evento['responsable'] }}
+                                        </div>
+
+                                        @if ($evento['detalle'] !== '')
+
+                                            <div class="mt-1 text-xs text-gray-500">
+                                                {{ $evento['detalle'] }}
+                                            </div>
+
+                                        @endif
+
+                                    </td>
+
+                                </tr>
+
+                            @endforeach
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+                <p class="mt-3 text-xs text-gray-500">
+                    Se muestran hasta 50 operaciones recientes.
+                    Los préstamos y devoluciones no modifican
+                    la existencia total del inventario.
+                </p>
+
+            @endif
+
+            {{-- Cerrar --}}
+            <div class="mt-6 flex justify-end border-t border-gray-100 pt-4">
+
+                <button
+                    type="button"
+                    wire:click="cerrarHistorial"
+                    class="rounded-lg bg-gray-800 px-5 py-2 font-medium text-white hover:bg-gray-900"
+                >
+                    Cerrar
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+@endif
+
 
 
     {{-- Modal de catálogo rápido --}}

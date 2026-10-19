@@ -6,15 +6,25 @@ use App\Models\Categoria;
 use App\Models\Insumo;
 use App\Models\Marca;
 use App\Models\UnidadMedida;
+use App\Models\MovimientoInventario;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use App\Services\RegistrarAperturaInventario;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
     use WithPagination;
+
+    public bool $mostrarHistorial = false;
+
+    public ?int $historialInsumoId = null;
+
+    public string $historialInsumoNombre = '';
 
     public string $buscar = '';
 
@@ -454,33 +464,79 @@ class Index extends Component
     }
 
 
-    public function guardarInsumo(): void
-    {
-        $this->validate();
+    
+public function guardarInsumo(): void
+{
+    $this->validate();
+
+    $esCreacion = $this->insumoId === null;
+
+    $cantidadInicial = (float) $this->cantidadActual;
+    $stockMinimo = (float) $this->stockMinimo;
+
+    DB::transaction(function () use (
+        $esCreacion,
+        $cantidadInicial,
+        $stockMinimo
+    ) {
+        /*
+        |--------------------------------------------------------------------------
+        | Obtener y bloquear el insumo si estamos editando
+        |--------------------------------------------------------------------------
+        */
+
+        $insumo = null;
+
+        if (! $esCreacion) {
+            $insumo = Insumo::query()
+                ->whereKey($this->insumoId)
+                ->lockForUpdate()
+                ->firstOrFail();
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Validar unidad de medida
+        |--------------------------------------------------------------------------
+        */
 
         $unidad = UnidadMedida::findOrFail(
             $this->unidadMedidaId
         );
 
-        if (
-            ! $unidad->permite_decimales
-            && (
-                fmod((float) $this->cantidadActual, 1.0) !== 0.0
-                || fmod((float) $this->stockMinimo, 1.0) !== 0.0
-            )
-        ) {
-            $this->addError(
-                'cantidadActual',
-                'La unidad de medida seleccionada no permite cantidades decimales.'
-            );
+        if (! $unidad->permite_decimales) {
 
-            return;
+            if (fmod($stockMinimo, 1.0) !== 0.0) {
+                throw ValidationException::withMessages([
+                    'stockMinimo' =>
+                        'La unidad de medida no permite un stock mínimo con decimales.',
+                ]);
+            }
+
+            /*
+             * Al crear validamos la cantidad inicial.
+             * Al editar validamos la existencia REAL de la BD.
+             */
+            $cantidadAValidar = $esCreacion
+                ? $cantidadInicial
+                : (float) $insumo->cantidad_actual;
+
+            if (fmod($cantidadAValidar, 1.0) !== 0.0) {
+                throw ValidationException::withMessages([
+                    'unidadMedidaId' =>
+                        'No puede utilizar esta unidad de medida porque la existencia contiene decimales.',
+                ]);
+            }
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Datos generales del insumo
+        |--------------------------------------------------------------------------
+        */
 
         $datos = [
-            'nombre' =>
-                trim($this->nombre),
+            'nombre' => trim($this->nombre),
 
             'categoria_id' =>
                 (int) $this->categoriaId,
@@ -493,11 +549,8 @@ class Index extends Component
             'unidad_medida_id' =>
                 (int) $this->unidadMedidaId,
 
-            'cantidad_actual' =>
-                (float) $this->cantidadActual,
-
             'stock_minimo' =>
-                (float) $this->stockMinimo,
+                $stockMinimo,
 
             'observaciones' =>
                 trim($this->observaciones) !== ''
@@ -508,37 +561,51 @@ class Index extends Component
                 $this->activoInsumo,
         ];
 
+        /*
+        |--------------------------------------------------------------------------
+        | Crear insumo
+        |--------------------------------------------------------------------------
+        */
 
-        if ($this->insumoId === null) {
+        if ($esCreacion) {
+
+            // Solo al crear permitimos establecer la existencia inicial.
+            $datos['cantidad_actual'] = $cantidadInicial;
 
             $datos['creado_por'] = Auth::id();
 
-            Insumo::create($datos);
+            $insumo = Insumo::create($datos);
 
-            session()->flash(
-                'mensaje',
-                'Insumo registrado correctamente.'
+            RegistrarAperturaInventario::registrar(
+                'insumo',
+                $insumo->id,
+                $cantidadInicial,
+                'Apertura inicial del insumo: ' . $insumo->nombre
             );
 
         } else {
 
-            $insumo = Insumo::findOrFail(
-                $this->insumoId
-            );
+            /*
+             * Al editar NO actualizamos cantidad_actual.
+             * Conservamos exactamente la existencia de la BD.
+             */
 
             $insumo->update($datos);
-
-            session()->flash(
-                'mensaje',
-                'Insumo actualizado correctamente.'
-            );
         }
 
+    }, 3);
 
-        $this->cerrarModal();
+    session()->flash(
+        'mensaje',
+        $esCreacion
+            ? 'Insumo registrado correctamente.'
+            : 'Insumo actualizado correctamente.'
+    );
 
-        $this->resetPage();
-    }
+    $this->cerrarModal();
+    $this->resetPage();
+}
+
 
 
     public function cambiarEstado(int $id): void
@@ -556,6 +623,25 @@ class Index extends Component
                 : 'Insumo desactivado correctamente.'
         );
     }
+
+
+    public function abrirHistorial(int $id): void
+    {
+        $insumo = Insumo::findOrFail($id);
+
+        $this->historialInsumoId = $insumo->id;
+        $this->historialInsumoNombre = $insumo->nombre;
+
+        $this->mostrarHistorial = true;
+    }
+
+    public function cerrarHistorial(): void
+    {
+        $this->mostrarHistorial = false;
+        $this->historialInsumoId = null;
+        $this->historialInsumoNombre = '';
+    }
+
 
 
     public function render()
@@ -643,13 +729,44 @@ class Index extends Component
             ->get();
 
 
+        // Historial del insumo seleccionado. 
+        $movimientosHistorial = collect(); 
+
+        if ($this->mostrarHistorial && $this->historialInsumoId !== null) {
+
+            $insumoId = $this->historialInsumoId;
+
+            $movimientosHistorial = MovimientoInventario::query() 
+                ->with([
+                    'usuario',
+                    'detalles' => function ($query) use ($insumoId) {
+                        $query->where('tipo_item', 'insumo')
+                            ->where('item_id', $insumoId);
+                    },
+                ])
+                ->whereIn('tipo', [
+                    'apertura',
+                    'entrada',
+                    'salida',
+                ])
+                ->whereHas('detalles', function ($query) use ($insumoId) {
+                    $query->where('tipo_item', 'insumo')
+                        ->where('item_id', $insumoId);
+                })
+                ->orderByDesc('fecha_movimiento')
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
+        }
+
         return view(
             'livewire.inventario.insumos.index',
             compact(
                 'insumos',
                 'categorias',
                 'marcas',
-                'unidades'
+                'unidades',
+                'movimientosHistorial',
             )
         );
     }

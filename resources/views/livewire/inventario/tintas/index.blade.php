@@ -468,6 +468,8 @@
                         </div>
 
 
+                        
+                        {{-- Botellas completas --}}
                         <div>
 
                             <label class="mb-1 block text-sm font-medium text-gray-700">
@@ -479,54 +481,118 @@
                                 min="0"
                                 step="1"
                                 wire:model="botellasCompletas"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
+                                @readonly($tintaId !== null)
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2
+                                    {{ $tintaId !== null
+                                        ? 'cursor-not-allowed bg-gray-100 text-gray-600'
+                                        : ''
+                                    }}"
                             >
 
-                            <p class="mt-1 text-xs text-gray-500">
-                                Registre únicamente las botellas que están completas.
-                            </p>
+                                @if ($tintaId !== null)
 
-                            @error('botellasCompletas')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Las botellas completas se modifican mediante
+                                        Movimientos → Entradas o Salidas.
+                                    </p>
 
-                        </div>
+                                @else
 
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Registre únicamente las botellas completas
+                                        disponibles inicialmente.
+                                    </p>
 
-                        <div>
+                                @endif
 
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Contenido de botella abierta
-                            </label>
+                                @error('botellasCompletas')
+                                    <p class="mt-1 text-sm text-red-600">
+                                        {{ $message }}
+                                    </p>
+                                @enderror
 
-                            <div class="relative">
+                            </div>
+
+                        
+                            {{-- Contenido de botella abierta --}}
+                            <div>
+
+                                <label class="mb-1 block text-sm font-medium text-gray-700">
+                                    Contenido de botella abierta
+                                </label>
+
+                                <div class="relative">
+
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="99.99"
+                                        step="0.01"
+                                        wire:model="porcentajeBotellaAbierta"
+                                        @readonly($tintaId !== null)
+                                        class="w-full rounded-lg border border-gray-300 px-4 py-2 pr-10
+                                            {{ $tintaId !== null
+                                                ? 'cursor-not-allowed bg-gray-100 text-gray-600'
+                                                : ''
+                                            }}"
+                                        >
+
+                                        <span class="pointer-events-none absolute right-4 top-2 text-gray-500">
+                                            %
+                                        </span>
+
+                                </div>
+
+                                @if ($tintaId !== null)
+
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Este porcentaje se actualiza mediante
+                                        las recargas de tinta.
+                                        No puede modificarse directamente.
+                                    </p>
+
+                                @else
+
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Indique el porcentaje disponible de una
+                                        botella abierta. Si no existe, coloque 0 %.
+                                    </p>
+
+                                @endif
+
+                                @error('porcentajeBotellaAbierta')
+                                    <p class="mt-1 text-sm text-red-600">
+                                        {{ $message }}
+                                    </p>
+                                @enderror
+
+                            </div>
+
+                            <div>
+
+                                <label class="mb-1 block text-sm font-medium text-gray-700">
+                                    Stock mínimo *
+                                </label>
 
                                 <input
                                     type="number"
                                     min="0"
-                                    max="99.99"
                                     step="0.01"
-                                    wire:model="porcentajeBotellaAbierta"
-                                    class="w-full rounded-lg border border-gray-300 px-4 py-2 pr-10"
+                                    wire:model="stockMinimoBotellas"
+                                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
                                 >
 
-                                <span class="absolute right-4 top-2 text-gray-500">
-                                    %
-                                </span>
+                                <p class="mt-1 text-xs text-gray-500">
+                                    Se expresa en botellas equivalentes. Ej.: 1 equivale a una botella.
+                                </p>
+
+                                @error('stockMinimoBotellas')
+                                    <p class="mt-1 text-sm text-red-600">
+                                        {{ $message }}
+                                    </p>
+                                @enderror
 
                             </div>
-
-                            <p class="mt-1 text-xs text-gray-500">
-                                Si no hay ninguna botella abierta, coloque 0 %.
-                            </p>
-
-                            @error('porcentajeBotellaAbierta')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
 
                         </div>
 
@@ -534,65 +600,35 @@
                         <div>
 
                             <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Stock mínimo *
+                                Observaciones
                             </label>
 
-                            <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                wire:model="stockMinimoBotellas"
+                            <textarea
+                                wire:model="observaciones"
+                                rows="4"
+                                placeholder="Información adicional..."
                                 class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                            >
-
-                            <p class="mt-1 text-xs text-gray-500">
-                                Se expresa en botellas equivalentes. Ej.: 1 equivale a una botella.
-                            </p>
-
-                            @error('stockMinimoBotellas')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
+                            ></textarea>
 
                         </div>
 
-                    </div>
+                        <div class="flex items-center">
 
+                            <input
+                                id="activoTinta"
+                                type="checkbox"
+                                wire:model="activoTinta"
+                                class="rounded border-gray-300"
+                            >
 
-                    <div>
+                            <label
+                                for="activoTinta"
+                                class="ml-2 text-sm text-gray-700"
+                            >
+                                Tinta activa
+                            </label>
 
-                        <label class="mb-1 block text-sm font-medium text-gray-700">
-                            Observaciones
-                        </label>
-
-                        <textarea
-                            wire:model="observaciones"
-                            rows="4"
-                            placeholder="Información adicional..."
-                            class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                        ></textarea>
-
-                    </div>
-
-
-                    <div class="flex items-center">
-
-                        <input
-                            id="activoTinta"
-                            type="checkbox"
-                            wire:model="activoTinta"
-                            class="rounded border-gray-300"
-                        >
-
-                        <label
-                            for="activoTinta"
-                            class="ml-2 text-sm text-gray-700"
-                        >
-                            Tinta activa
-                        </label>
-
-                    </div>
+                        </div>
 
 
                     <div class="flex justify-end gap-3 border-t border-gray-100 pt-5">

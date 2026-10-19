@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\DB;
+use App\Services\RegistrarAperturaInventario;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
@@ -237,13 +239,57 @@ class Index extends Component
     }
 
 
-    public function guardarTinta(): void
-    {
-        $this->validate();
+    
+public function guardarTinta(): void
+{
+    $this->validate();
 
-        $nombre = trim($this->nombre);
-        $color = trim($this->color);
+    $esCreacion = $this->tintaId === null;
 
+    $nombre = trim($this->nombre);
+    $color = trim($this->color);
+
+    $marcaId = $this->marcaId !== ''
+        ? (int) $this->marcaId
+        : null;
+
+    $botellasIniciales = (int) $this->botellasCompletas;
+
+    $porcentajeInicial = (float) $this->porcentajeBotellaAbierta;
+
+    $stockMinimo = (float) $this->stockMinimoBotellas;
+
+    DB::transaction(function () use (
+        $esCreacion,
+        $nombre,
+        $color,
+        $marcaId,
+        $botellasIniciales,
+        $porcentajeInicial,
+        $stockMinimo
+    ) {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Obtener y bloquear la tinta cuando estamos editando
+        |--------------------------------------------------------------------------
+        */
+
+        $tinta = null;
+
+        if (! $esCreacion) {
+
+            $tinta = Tinta::query()
+                ->whereKey($this->tintaId)
+                ->lockForUpdate()
+                ->firstOrFail();
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Validar que no exista una tinta duplicada
+        |--------------------------------------------------------------------------
+        */
 
         $duplicada = Tinta::query()
             ->whereRaw(
@@ -255,106 +301,127 @@ class Index extends Component
                 [mb_strtolower($color)]
             )
             ->when(
-                $this->marcaId !== '',
-                function ($query) {
-                    $query->where(
-                        'marca_id',
-                        (int) $this->marcaId
-                    );
-                },
-                function ($query) {
-                    $query->whereNull('marca_id');
-                }
+                $marcaId !== null,
+                fn ($query) => $query->where(
+                    'marca_id',
+                    $marcaId
+                ),
+                fn ($query) => $query->whereNull(
+                    'marca_id'
+                )
             )
             ->when(
-                $this->tintaId !== null,
-                function ($query) {
-                    $query->where(
-                        'id',
-                        '!=',
-                        $this->tintaId
-                    );
-                }
+                ! $esCreacion,
+                fn ($query) => $query->where(
+                    'id',
+                    '!=',
+                    $this->tintaId
+                )
             )
             ->exists();
 
-
         if ($duplicada) {
-            $this->addError(
-                'nombre',
-                'Ya existe una tinta con esta referencia, marca y color.'
-            );
 
-            return;
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'nombre' =>
+                    'Ya existe una tinta con esta referencia, marca y color.',
+            ]);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Preparar datos generales
+        |--------------------------------------------------------------------------
+        |
+        | No incluimos las existencias de tinta
+        | porque al editar deben conservarse.
+        |
+        */
 
         $datos = [
-            'nombre' =>
-                $nombre,
+            'nombre' => $nombre,
 
-            'marca_id' =>
-                $this->marcaId !== ''
-                    ? (int) $this->marcaId
-                    : null,
+            'marca_id' => $marcaId,
 
-            'color' =>
-                $color,
+            'color' => $color,
 
             'presentacion' =>
                 trim($this->presentacion) !== ''
                     ? trim($this->presentacion)
                     : null,
 
-            'botellas_completas' =>
-                (int) $this->botellasCompletas,
-
-            'porcentaje_botella_abierta' =>
-                (float) $this->porcentajeBotellaAbierta,
-
-            'stock_minimo_botellas' =>
-                (float) $this->stockMinimoBotellas,
+            'stock_minimo_botellas' => $stockMinimo,
 
             'observaciones' =>
                 trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
 
-            'activo' =>
-                $this->activoTinta,
+            'activo' => $this->activoTinta,
         ];
 
+        /*
+        |--------------------------------------------------------------------------
+        | Crear una nueva tinta
+        |--------------------------------------------------------------------------
+        */
 
-        if ($this->tintaId === null) {
+        if ($esCreacion) {
+
+            // Solo al crear se registran existencias iniciales.
+
+            $datos['botellas_completas'] =
+                $botellasIniciales;
+
+            $datos['porcentaje_botella_abierta'] =
+                $porcentajeInicial;
 
             $datos['creado_por'] = Auth::id();
 
-            Tinta::create($datos);
+            $tinta = Tinta::create($datos);
 
-            session()->flash(
-                'mensaje',
-                'Tinta registrada correctamente.'
+            $existenciaEquivalente = $botellasIniciales
+                + ($porcentajeInicial / 100);
+
+            RegistrarAperturaInventario::registrar(
+                'tinta',
+                $tinta->id,
+                $existenciaEquivalente,
+                'Apertura inicial de tinta: '
+                    . $tinta->nombre
+                    . ' | Color: ' . $tinta->color
+                    . ' | Botellas completas: ' . $botellasIniciales
+                    . ' | Porcentaje de botella abierta: '
+                    . number_format($porcentajeInicial, 2, '.', '')
+                    . '%'
             );
 
         } else {
 
-            $tinta = Tinta::findOrFail(
-                $this->tintaId
-            );
+            /*
+             * Al editar se conservan las botellas
+             * y el porcentaje almacenados en la BD.
+             *
+             * Las Entradas, Salidas y Recargas
+             * son las encargadas de modificarlos.
+             */
 
             $tinta->update($datos);
-
-            session()->flash(
-                'mensaje',
-                'Tinta actualizada correctamente.'
-            );
         }
 
+    }, 3);
 
-        $this->cerrarModal();
+    session()->flash(
+        'mensaje',
+        $esCreacion
+            ? 'Tinta registrada correctamente.'
+            : 'Tinta actualizada correctamente.'
+    );
 
-        $this->resetPage();
-    }
+    $this->cerrarModal();
+    $this->resetPage();
+}
+
 
 
     public function cambiarEstado(int $id): void

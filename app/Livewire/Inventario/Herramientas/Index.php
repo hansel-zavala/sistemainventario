@@ -7,17 +7,26 @@ use App\Models\Herramienta;
 use App\Models\PrestamoDetalle;
 use App\Models\Marca;
 use App\Models\UnidadMedida;
+use App\Models\MovimientoInventario;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Carbon;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use App\Services\RegistrarAperturaInventario;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
     use WithPagination;
+
+    public bool $mostrarHistorial = false;
+
+    public ?int $historialHerramientaId = null;
+
+    public string $historialHerramientaNombre = '';
 
     public string $buscar = '';
 
@@ -653,7 +662,15 @@ public function guardarHerramienta(): void
             $datos['cantidad_actual'] = $cantidadInicial;
             $datos['creado_por'] = Auth::id();
 
-            Herramienta::create($datos);
+            $herramienta = Herramienta::create($datos);
+
+            RegistrarAperturaInventario::registrar(
+                'herramienta',
+                $herramienta->id,
+                $cantidadInicial,
+                'Apertura inicial de la herramienta: '
+                    . $herramienta->nombre
+);
         } else {
             /*
              * La existencia se conserva exactamente
@@ -723,19 +740,39 @@ public function guardarHerramienta(): void
     }
 
 
+    public function abrirHistorial(int $id): void
+    {
+        $herramienta = Herramienta::findOrFail($id);
+
+        $this->historialHerramientaId = $herramienta->id;
+
+        $this->historialHerramientaNombre = $herramienta->nombre;
+
+        $this->mostrarHistorial = true;
+    }
+
+    public function cerrarHistorial(): void
+    {
+        $this->mostrarHistorial = false;
+
+        $this->historialHerramientaId = null;
+
+        $this->historialHerramientaNombre = '';
+    }
+
     
-public function render()
-{
-    $herramientas = Herramienta::query()
-        ->withExists([
-            'prestamos as esta_prestada' => function ($query) {
-                $query->where('estado', 'prestado');
-            },
-        ])
-        ->with([
-            'categoria',
-            'marca',
-            'unidadMedida',
+    public function render()
+    {
+        $herramientas = Herramienta::query()
+            ->withExists([
+                'prestamos as esta_prestada' => function ($query) {
+                    $query->where('estado', 'prestado');
+                },
+            ])
+            ->with([
+                'categoria',
+                'marca',
+                'unidadMedida',
         ])
         ->when(
             $this->buscar,
@@ -837,15 +874,193 @@ public function render()
         ->orderBy('nombre_singular')
         ->get();
 
+
+    
+/*
+|--------------------------------------------------------------------------
+| Historial completo de la herramienta
+|--------------------------------------------------------------------------
+*/
+
+    $eventosHistorial = collect();
+
+    if (
+        $this->mostrarHistorial
+        && $this->historialHerramientaId !== null
+    ) {
+        $herramientaId = $this->historialHerramientaId;
+
+        /*
+         * 1. Aperturas, Entradas y Salidas.
+        */
+        $movimientos = MovimientoInventario::query()
+            ->with([
+                'usuario',
+                'detalles' => function ($query) use ($herramientaId) {
+                    $query
+                        ->where('tipo_item', 'herramienta')
+                        ->where('item_id', $herramientaId);
+                },
+            ])
+            ->whereIn('tipo', [
+                'apertura',
+                'entrada',
+                'salida',
+            ])
+            ->whereHas('detalles', function ($query) use ($herramientaId) {
+                $query
+                    ->where('tipo_item', 'herramienta')
+                    ->where('item_id', $herramientaId);
+            })
+            ->orderByDesc('fecha_movimiento')
+            ->limit(100)
+            ->get();
+
+        foreach ($movimientos as $movimiento) {
+            foreach ($movimiento->detalles as $detalle) {
+                $eventosHistorial->push([
+                    'tipo' => $movimiento->tipo,
+                    'fecha' => $movimiento->fecha_movimiento,
+                    'cantidad' => (float) $detalle->cantidad,
+                    'anterior' => (float) $detalle->existencia_anterior,
+                    'posterior' => (float) $detalle->existencia_posterior,
+                    'responsable' => $movimiento->usuario?->name
+                        ?? 'Usuario no disponible',
+                    'detalle' => $movimiento->observaciones ?? '',
+                    'orden' => $movimiento->id,
+                ]);
+            }
+        }
+
+        /*
+         * 2. Préstamos de esta herramienta.
+         *
+         * Incluye herramientas individuales y por cantidad.
+         */
+        $prestamos = PrestamoDetalle::query()
+            ->with([
+                'prestamo.departamentoDestino',
+                'prestamo.usuario',
+                'devoluciones.usuario',
+                'usuarioRecibe',
+            ])
+            ->where('herramienta_id', $herramientaId)
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        foreach ($prestamos as $prestamoDetalle) {
+
+            $prestamo = $prestamoDetalle->prestamo;
+
+            if (! $prestamo) {
+                continue;
+            }
+
+            $departamento = $prestamo->departamentoDestino?->nombre
+                ?? 'Sin departamento';
+
+            $persona = $prestamo->persona_recibe
+                ?: 'No especificada';
+
+            /*
+             * Evento del préstamo inicial.
+             */
+            $eventosHistorial->push([
+                'tipo' => 'prestamo',
+                'fecha' => $prestamo->fecha_prestamo,
+                'cantidad' => (float) $prestamoDetalle->cantidad_prestada,
+                'anterior' => null,
+                'posterior' => null,
+                'responsable' => $prestamo->usuario?->name
+                    ?? 'Usuario no disponible',
+                'detalle' => 'Departamento: ' . $departamento
+                    . ' | Recibe: ' . $persona,
+                'orden' => $prestamoDetalle->id,
+            ]);
+
+            /*
+             * 3. Cada devolución parcial o completa.
+             */
+            foreach ($prestamoDetalle->devoluciones as $devolucion) {
+
+                $eventosHistorial->push([
+                    'tipo' => 'devolucion',
+                    'fecha' => $devolucion->fecha_devolucion,
+                    'cantidad' => (float) $devolucion->cantidad,
+                    'anterior' => null,
+                    'posterior' => null,
+                    'responsable' => $devolucion->usuario?->name
+                        ?? 'Usuario no disponible',
+                    'detalle' => 'Devolución del préstamo #'
+                        . $prestamo->id
+                        . (
+                            $devolucion->observaciones
+                                ? ' | ' . $devolucion->observaciones
+                                : ''
+                        ),
+                'orden' => $devolucion->id,
+            ]);
+        }
+
+        /*
+         * Compatibilidad con devoluciones anteriores
+         * a la creación de prestamo_devoluciones.
+         *
+         * Solo se incorpora este registro cuando
+         * no existen eventos individuales.
+         */
+        if (
+            $prestamoDetalle->devoluciones->isEmpty()
+            && $prestamoDetalle->estado === 'devuelto'
+            && $prestamoDetalle->fecha_devolucion
+        ) {
+            $eventosHistorial->push([
+                'tipo' => 'devolucion',
+                'fecha' => $prestamoDetalle->fecha_devolucion,
+                'cantidad' => (float) $prestamoDetalle->cantidad_devuelta,
+                'anterior' => null,
+                'posterior' => null,
+                'responsable' => $prestamoDetalle->usuarioRecibe?->name
+                    ?? 'Usuario no disponible',
+                'detalle' => 'Devolución registrada anteriormente'
+                    . ' | Préstamo #' . $prestamo->id,
+                'orden' => $prestamoDetalle->id,
+            ]);
+        }
+    }
+
+    /*
+     * Ordenar todas las operaciones por fecha,
+     * de la más reciente a la más antigua.
+     */
+    $eventosHistorial = $eventosHistorial
+        ->sort(function ($a, $b) {
+            $fechaA = Carbon::parse($a['fecha'])->getTimestamp();
+            $fechaB = Carbon::parse($b['fecha'])->getTimestamp();
+
+            if ($fechaA !== $fechaB) {
+                return $fechaB <=> $fechaA;
+            }
+
+            return $b['orden'] <=> $a['orden'];
+        })
+        ->take(50)
+        ->values();
+}
+
+
+
     return view(
         'livewire.inventario.herramientas.index',
         compact(
             'herramientas',
             'categorias',
             'marcas',
-            'unidades'
+            'unidades',
+            'eventosHistorial'
         )
     );
-}
+    }
 
 }

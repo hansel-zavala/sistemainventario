@@ -167,7 +167,7 @@
                                         : 'text-gray-700'
                                     }}"
                                 >
-                                    {{ rtrim(rtrim(number_format($cantidad, 2, '.', ''), '0'), '.') }}
+                                    {{ (float) number_format($cantidad, 2, '.', '') }}
 
                                     {{ $unidadCantidad }}
                                 </span>
@@ -186,7 +186,7 @@
 
                             <td class="px-5 py-4 text-gray-600">
 
-                                {{ rtrim(rtrim(number_format($stockMinimo, 2, '.', ''), '0'), '.') }}
+                                {{ (float) number_format($stockMinimo, 2, '.', '') }}
 
                                 {{ $unidadStock }}
 
@@ -238,6 +238,16 @@
                                             : 'Activar'
                                         }}
                                     </button>
+
+
+                                    <button
+                                        type="button"
+                                        wire:click="abrirHistorial({{ $insumo->id }})"
+                                        class="font-medium text-indigo-600 hover:text-indigo-800"
+                                    >
+                                        Historial
+                                    </button>
+
 
                                 </div>
 
@@ -481,6 +491,8 @@
                         </div>
 
 
+                        
+                        {{-- Cantidad actual --}}
                         <div>
 
                             <label class="mb-1 block text-sm font-medium text-gray-700">
@@ -492,16 +504,38 @@
                                 min="0"
                                 step="0.01"
                                 wire:model="cantidadActual"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
+                                @readonly($insumoId !== null)
+                                class="w-full rounded-lg border border-gray-300 px-4 py-2
+                                    {{ $insumoId !== null
+                                        ? 'cursor-not-allowed bg-gray-100 text-gray-600'
+                                        : ''
+                                    }}"
                             >
 
-                            @error('cantidadActual')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
+                                @if ($insumoId !== null)
 
-                        </div>
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        La existencia no puede modificarse desde este formulario.
+                                        Utilice Movimientos → Entradas o Salidas.
+                                    </p>
+
+                                @else
+
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Registre la cantidad inicial del insumo.
+                                        Las próximas modificaciones se realizarán mediante movimientos.
+                                    </p>
+
+                                @endif
+
+                                @error('cantidadActual')
+                                    <p class="mt-1 text-sm text-red-600">
+                                        {{ $message }}
+                                    </p>
+                                @enderror
+
+                            </div>
+
 
 
                         <div>
@@ -606,6 +640,151 @@
         </div>
 
     @endif
+
+
+    {{-- Modal de historial del insumo --}}
+    @if ($mostrarHistorial)
+
+        <div class="fixed inset-0 z-50 overflow-y-auto bg-black/50 px-4 py-8">
+
+            <div class="mx-auto w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl">
+
+                {{-- Encabezado --}}
+                <div class="mb-6 flex items-start justify-between gap-4">
+
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">
+                            Historial del insumo
+                        </h2>
+
+                        <p class="mt-1 text-sm text-gray-500">
+                            {{ $historialInsumoNombre }}
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        wire:click="cerrarHistorial"
+                        class="text-2xl text-gray-400 hover:text-gray-600"
+                    >
+                        &times;
+                    </button>
+
+                </div>
+
+                {{-- Movimientos --}}
+                @if ($movimientosHistorial->isEmpty())
+
+                    <div class="rounded-lg bg-gray-50 px-5 py-10 text-center text-sm text-gray-500">
+                        Este insumo todavía no tiene movimientos registrados.
+                    </div>
+
+                @else
+
+                    <div class="overflow-x-auto rounded-lg border border-gray-200">
+
+                        <table class="w-full text-sm">
+
+                            <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="px-4 py-3">Fecha</th>
+                                    <th class="px-4 py-3">Movimiento</th>
+                                    <th class="px-4 py-3">Cantidad</th>
+                                    <th class="px-4 py-3">Anterior</th>
+                                    <th class="px-4 py-3">Posterior</th>
+                                    <th class="px-4 py-3">Responsable</th>
+                                </tr>
+                            </thead>
+
+                            <tbody class="divide-y divide-gray-200">
+
+                                @foreach ($movimientosHistorial as $movimiento)
+
+                                    @foreach ($movimiento->detalles as $detalle)
+
+                                        <tr class="hover:bg-gray-50">
+
+                                            <td class="whitespace-nowrap px-4 py-3 text-gray-600">
+                                                {{ $movimiento->fecha_movimiento?->format('d/m/Y H:i') ?? '—' }}
+                                            </td>
+
+                                            <td class="px-4 py-3">
+
+                                                @if ($movimiento->tipo === 'apertura')
+
+                                                    <span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800">
+                                                        Apertura
+                                                    </span>
+
+                                                @elseif ($movimiento->tipo === 'entrada')
+
+                                                    <span class="rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">
+                                                        Entrada
+                                                    </span>
+
+                                                @elseif ($movimiento->tipo === 'salida')
+
+                                                    <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                                                        Salida
+                                                    </span>
+
+                                                @endif
+
+                                            </td>
+
+                                            <td class="px-4 py-3 font-medium text-gray-800">
+                                                {{ number_format((float) $detalle->cantidad, 2, '.', '') }}
+                                            </td>
+
+                                            <td class="px-4 py-3 text-gray-600">
+                                                {{ number_format((float) $detalle->existencia_anterior, 2, '.', '') }}
+                                            </td>
+
+                                            <td class="px-4 py-3 font-semibold text-gray-800">
+                                                {{ number_format((float) $detalle->existencia_posterior, 2, '.', '') }}
+                                            </td>
+
+                                            <td class="px-4 py-3 text-gray-600">
+                                                {{ $movimiento->usuario?->name ?? 'Usuario no disponible' }}
+                                            </td>
+
+                                        </tr>
+
+                                    @endforeach
+
+                                @endforeach
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                    <p class="mt-3 text-xs text-gray-500">
+                        Se muestran hasta los últimos 50 movimientos del insumo.
+                    </p>
+
+                @endif
+
+                {{-- Cerrar --}}
+                <div class="mt-6 flex justify-end border-t border-gray-100 pt-4">
+
+                    <button
+                        type="button"
+                        wire:click="cerrarHistorial"
+                        class="rounded-lg bg-gray-800 px-5 py-2 font-medium text-white hover:bg-gray-900"
+                    >
+                        Cerrar
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    @endif
+
 
 
     {{-- Modal de catálogo rápido --}}
