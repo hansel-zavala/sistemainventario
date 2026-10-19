@@ -171,7 +171,7 @@
                     @forelse ($eventosHistorial as $evento)
 
                     <tr
-                        wire:key="evento-{{ $evento->tipo }}-{{ $evento->origen_id }}"
+                        wire:key="historial-{{ $eventosHistorial->currentPage() }}-{{ $loop->index }}-{{ $evento->tipo }}-{{ $evento->tipo_item }}-{{ $evento->item_id }}-{{ $evento->origen_id }}"
                         class="hover:bg-gray-50">
 
                         {{-- Fecha --}}
