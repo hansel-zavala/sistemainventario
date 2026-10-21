@@ -7,6 +7,7 @@ use App\Models\Insumo;
 use App\Models\Marca;
 use App\Models\UnidadMedida;
 use App\Models\MovimientoInventario;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -205,23 +206,23 @@ class Index extends Component
     {
         return [
             'nuevoNombreCatalogo.required' =>
-                $this->tipoCatalogo === 'unidad_medida'
-                    ? 'El nombre en singular es obligatorio.'
-                    : 'El nombre es obligatorio.',
+            $this->tipoCatalogo === 'unidad_medida'
+                ? 'El nombre en singular es obligatorio.'
+                : 'El nombre es obligatorio.',
 
             'nuevoNombreCatalogo.max' =>
-                $this->tipoCatalogo === 'unidad_medida'
-                    ? 'El nombre en singular no puede superar los 50 caracteres.'
-                    : 'El nombre no puede superar los 150 caracteres.',
+            $this->tipoCatalogo === 'unidad_medida'
+                ? 'El nombre en singular no puede superar los 50 caracteres.'
+                : 'El nombre no puede superar los 150 caracteres.',
 
             'nuevoNombrePluralUnidad.required' =>
-                'El nombre en plural es obligatorio.',
+            'El nombre en plural es obligatorio.',
 
             'nuevoNombrePluralUnidad.max' =>
-                'El nombre en plural no puede superar los 50 caracteres.',
+            'El nombre en plural no puede superar los 50 caracteres.',
 
             'nuevaAbreviaturaUnidad.max' =>
-                'La abreviatura no puede superar los 15 caracteres.',
+            'La abreviatura no puede superar los 15 caracteres.',
         ];
     }
 
@@ -420,209 +421,291 @@ class Index extends Component
     {
         return [
             'nombre.required' =>
-                'El nombre del insumo es obligatorio.',
+            'El nombre del insumo es obligatorio.',
 
             'nombre.max' =>
-                'El nombre no puede superar los 150 caracteres.',
+            'El nombre no puede superar los 150 caracteres.',
 
             'categoriaId.required' =>
-                'Debe seleccionar una categoría.',
+            'Debe seleccionar una categoría.',
 
             'categoriaId.exists' =>
-                'La categoría seleccionada no es válida.',
+            'La categoría seleccionada no es válida.',
 
             'marcaId.exists' =>
-                'La marca seleccionada no es válida.',
+            'La marca seleccionada no es válida.',
 
             'unidadMedidaId.required' =>
-                'Debe seleccionar una unidad de medida.',
+            'Debe seleccionar una unidad de medida.',
 
             'unidadMedidaId.exists' =>
-                'La unidad de medida seleccionada no es válida.',
+            'La unidad de medida seleccionada no es válida.',
 
             'cantidadActual.required' =>
-                'La cantidad actual es obligatoria.',
+            'La cantidad actual es obligatoria.',
 
             'cantidadActual.numeric' =>
-                'La cantidad actual debe ser un número.',
+            'La cantidad actual debe ser un número.',
 
             'cantidadActual.min' =>
-                'La cantidad actual no puede ser negativa.',
+            'La cantidad actual no puede ser negativa.',
 
             'stockMinimo.required' =>
-                'El stock mínimo es obligatorio.',
+            'El stock mínimo es obligatorio.',
 
             'stockMinimo.numeric' =>
-                'El stock mínimo debe ser un número.',
+            'El stock mínimo debe ser un número.',
 
             'stockMinimo.min' =>
-                'El stock mínimo no puede ser negativo.',
+            'El stock mínimo no puede ser negativo.',
 
             'observaciones.max' =>
-                'Las observaciones no pueden superar los 2000 caracteres.',
+            'Las observaciones no pueden superar los 2000 caracteres.',
         ];
     }
 
 
-    
-public function guardarInsumo(): void
-{
-    $this->validate();
 
-    $esCreacion = $this->insumoId === null;
+    public function guardarInsumo(): void
+    {
+        $this->validate();
 
-    $cantidadInicial = (float) $this->cantidadActual;
-    $stockMinimo = (float) $this->stockMinimo;
+        $esCreacion = $this->insumoId === null;
 
-    DB::transaction(function () use (
-        $esCreacion,
-        $cantidadInicial,
-        $stockMinimo
-    ) {
-        /*
-        |--------------------------------------------------------------------------
-        | Obtener y bloquear el insumo si estamos editando
-        |--------------------------------------------------------------------------
-        */
+        $cantidadInicial = (float) $this->cantidadActual;
+        $stockMinimo = (float) $this->stockMinimo;
 
-        $insumo = null;
+        DB::transaction(function () use (
+            $esCreacion,
+            $cantidadInicial,
+            $stockMinimo
+        ) {
+            /* Obtener y bloquear el insumo si estamos editando */
 
-        if (! $esCreacion) {
-            $insumo = Insumo::query()
-                ->whereKey($this->insumoId)
-                ->lockForUpdate()
-                ->firstOrFail();
-        }
+            $insumo = null;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Validar unidad de medida
-        |--------------------------------------------------------------------------
-        */
+            if (! $esCreacion) {
+                $insumo = Insumo::query()
+                    ->whereKey($this->insumoId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
 
-        $unidad = UnidadMedida::findOrFail(
-            $this->unidadMedidaId
-        );
+            /* Validar unidad de medida */
 
-        if (! $unidad->permite_decimales) {
+            $unidad = UnidadMedida::findOrFail(
+                $this->unidadMedidaId
+            );
 
-            if (fmod($stockMinimo, 1.0) !== 0.0) {
-                throw ValidationException::withMessages([
-                    'stockMinimo' =>
+            if (! $unidad->permite_decimales) {
+
+                if (fmod($stockMinimo, 1.0) !== 0.0) {
+                    throw ValidationException::withMessages([
+                        'stockMinimo' =>
                         'La unidad de medida no permite un stock mínimo con decimales.',
-                ]);
-            }
+                    ]);
+                }
 
-            /*
-             * Al crear validamos la cantidad inicial.
-             * Al editar validamos la existencia REAL de la BD.
-             */
-            $cantidadAValidar = $esCreacion
-                ? $cantidadInicial
-                : (float) $insumo->cantidad_actual;
+                /*
+                | Al crear validamos la cantidad inicial.
+                | Al editar validamos la existencia REAL de la BD.
+                */
+                $cantidadAValidar = $esCreacion
+                    ? $cantidadInicial
+                    : (float) $insumo->cantidad_actual;
 
-            if (fmod($cantidadAValidar, 1.0) !== 0.0) {
-                throw ValidationException::withMessages([
-                    'unidadMedidaId' =>
+                if (fmod($cantidadAValidar, 1.0) !== 0.0) {
+                    throw ValidationException::withMessages([
+                        'unidadMedidaId' =>
                         'No puede utilizar esta unidad de medida porque la existencia contiene decimales.',
-                ]);
+                    ]);
+                }
             }
-        }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Datos generales del insumo
-        |--------------------------------------------------------------------------
-        */
+            /* Datos generales del insumo */
 
-        $datos = [
-            'nombre' => trim($this->nombre),
+            $datos = [
+                'nombre' => trim($this->nombre),
 
-            'categoria_id' =>
+                'categoria_id' =>
                 (int) $this->categoriaId,
 
-            'marca_id' =>
+                'marca_id' =>
                 $this->marcaId !== ''
                     ? (int) $this->marcaId
                     : null,
 
-            'unidad_medida_id' =>
+                'unidad_medida_id' =>
                 (int) $this->unidadMedidaId,
 
-            'stock_minimo' =>
+                'stock_minimo' =>
                 $stockMinimo,
 
-            'observaciones' =>
+                'observaciones' =>
                 trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
 
-            'activo' =>
+                'activo' =>
                 $this->activoInsumo,
-        ];
+            ];
 
-        /*
-        |--------------------------------------------------------------------------
-        | Crear insumo
-        |--------------------------------------------------------------------------
-        */
+            /* Crear insumo */
 
-        if ($esCreacion) {
+            if ($esCreacion) {
 
-            // Solo al crear permitimos establecer la existencia inicial.
-            $datos['cantidad_actual'] = $cantidadInicial;
+                $datos['cantidad_actual'] = $cantidadInicial;
 
-            $datos['creado_por'] = Auth::id();
+                $datos['creado_por'] = Auth::id();
 
-            $insumo = Insumo::create($datos);
+                $insumo = Insumo::create($datos);
 
-            RegistrarAperturaInventario::registrar(
-                'insumo',
-                $insumo->id,
-                $cantidadInicial,
-                'Apertura inicial del insumo: ' . $insumo->nombre
-            );
+                /* Registrar apertura inicial */
 
-        } else {
+                RegistrarAperturaInventario::registrar(
+                    'insumo',
+                    $insumo->id,
+                    $cantidadInicial,
+                    'Apertura inicial del insumo: ' . $insumo->nombre
+                );
 
-            /*
-             * Al editar NO actualizamos cantidad_actual.
-             * Conservamos exactamente la existencia de la BD.
-             */
+                /* Registrar auditoría de creación */
 
-            $insumo->update($datos);
-        }
+                Auditoria::create([
+                    'modelo' => Insumo::class,
 
-    }, 3);
+                    'registro_id' => $insumo->id,
 
-    session()->flash(
-        'mensaje',
-        $esCreacion
-            ? 'Insumo registrado correctamente.'
-            : 'Insumo actualizado correctamente.'
-    );
+                    'accion' => 'creacion',
 
-    $this->cerrarModal();
-    $this->resetPage();
-}
+                    'valores_anteriores' => null,
+
+                    'valores_nuevos' => $insumo->only([
+                        'nombre',
+                        'categoria_id',
+                        'marca_id',
+                        'unidad_medida_id',
+                        'cantidad_actual',
+                        'stock_minimo',
+                        'observaciones',
+                        'activo',
+                    ]),
+
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /* Preparar los cambios administrativos */
+
+                $insumo->fill($datos);
+
+                $valoresNuevos = $insumo->getDirty();
+
+                /* Guardar solamente si hay cambios */
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+
+                        $valoresAnteriores[$campo] =
+                            $insumo->getOriginal($campo);
+                    }
+
+                    /* Guardar los datos actualizados. */
+                    $insumo->save();
+
+                    /* Registrar auditoría de modificación */
+
+                    Auditoria::create([
+                        'modelo' => Insumo::class,
+
+                        'registro_id' => $insumo->id,
+
+                        'accion' => 'actualizacion',
+
+                        'valores_anteriores' => $valoresAnteriores,
+
+                        'valores_nuevos' => $valoresNuevos,
+
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+        }, 3);
+
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Insumo registrado correctamente.'
+                : 'Insumo actualizado correctamente.'
+        );
+
+        $this->cerrarModal();
+        $this->resetPage();
+    }
+
 
 
 
     public function cambiarEstado(int $id): void
     {
-        $insumo = Insumo::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $insumo->update([
-            'activo' => ! $insumo->activo,
-        ]);
+            /* Obtener y bloquear el insumo */
+
+            $insumo = Insumo::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            /* Identificar los estados */
+
+            $estadoAnterior = (bool) $insumo->activo;
+
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar el estado del insumo */
+
+            $insumo->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar la auditoría */
+
+            Auditoria::create([
+                'modelo' => Insumo::class,
+
+                'registro_id' => $insumo->id,
+
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+
+                'usuario_id' => Auth::id(),
+            ]);
+            return $nuevoEstado;
+        }, 3);
+
+        /* Mensaje de confirmación */
 
         session()->flash(
             'mensaje',
-            $insumo->activo
+            $nuevoEstado
                 ? 'Insumo activado correctamente.'
                 : 'Insumo desactivado correctamente.'
         );
     }
+
 
 
     public function abrirHistorial(int $id): void
@@ -730,13 +813,13 @@ public function guardarInsumo(): void
 
 
         // Historial del insumo seleccionado. 
-        $movimientosHistorial = collect(); 
+        $movimientosHistorial = collect();
 
         if ($this->mostrarHistorial && $this->historialInsumoId !== null) {
 
             $insumoId = $this->historialInsumoId;
 
-            $movimientosHistorial = MovimientoInventario::query() 
+            $movimientosHistorial = MovimientoInventario::query()
                 ->with([
                     'usuario',
                     'detalles' => function ($query) use ($insumoId) {
