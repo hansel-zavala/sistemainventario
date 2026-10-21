@@ -7,7 +7,10 @@ use App\Models\Departamento;
 use App\Models\Equipo;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -406,128 +409,182 @@ class Index extends Component
         ];
     }
 
+
     public function guardarEquipo(): void
     {
         $this->validate();
 
-        $numeroInventario =
-            trim($this->numeroInventario);
+        $esCreacion = $this->equipoId === null;
 
-        $numeroSerie =
-            trim($this->numeroSerie);
+        $numeroInventario = trim($this->numeroInventario);
+        $numeroSerie = trim($this->numeroSerie);
 
-        $inventarioDuplicado = Equipo::query()
-            ->whereRaw(
-                'LOWER(TRIM(numero_inventario)) = ?',
-                [mb_strtolower($numeroInventario)]
-            )
-            ->when(
-                $this->equipoId !== null,
-                function ($query) {
-                    $query->where(
+        DB::transaction(function () use (
+            $esCreacion,
+            $numeroInventario,
+            $numeroSerie
+        ) {
+
+            /* Obtener y bloquear el equipo cuando se edita */
+
+            $equipo = null;
+
+            if (! $esCreacion) {
+                $equipo = Equipo::query()
+                    ->whereKey($this->equipoId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            /* Validar número de inventario único */
+
+            $inventarioDuplicado = Equipo::query()
+                ->whereRaw(
+                    'LOWER(TRIM(numero_inventario)) = ?',
+                    [mb_strtolower($numeroInventario)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
                         'id',
                         '!=',
                         $this->equipoId
-                    );
-                }
-            )
-            ->exists();
-
-        if ($inventarioDuplicado) {
-            $this->addError(
-                'numeroInventario',
-                'Ya existe un equipo con este número de inventario.'
-            );
-
-            return;
-        }
-
-        if ($numeroSerie !== '') {
-
-            $serieDuplicada = Equipo::query()
-                ->whereRaw(
-                    'LOWER(TRIM(numero_serie)) = ?',
-                    [mb_strtolower($numeroSerie)]
-                )
-                ->when(
-                    $this->equipoId !== null,
-                    function ($query) {
-                        $query->where(
-                            'id',
-                            '!=',
-                            $this->equipoId
-                        );
-                    }
+                    )
                 )
                 ->exists();
 
-            if ($serieDuplicada) {
-                $this->addError(
-                    'numeroSerie',
-                    'Ya existe un equipo con este número de serie.'
-                );
-
-                return;
+            if ($inventarioDuplicado) {
+                throw ValidationException::withMessages([
+                    'numeroInventario' =>
+                    'Ya existe un equipo con este número de inventario.',
+                ]);
             }
-        }
 
-        $datos = [
-            'categoria_id' => (int) $this->categoriaId,
+            /* Validar número de serie único cuando se proporciona */
 
-            'tipo_equipo_id' => (int) $this->tipoEquipoId,
+            if ($numeroSerie !== '') {
 
-            'departamento_id' => (int) $this->departamentoId,
+                $serieDuplicada = Equipo::query()
+                    ->whereRaw(
+                        'LOWER(TRIM(numero_serie)) = ?',
+                        [mb_strtolower($numeroSerie)]
+                    )
+                    ->when(
+                        ! $esCreacion,
+                        fn($query) => $query->where(
+                            'id',
+                            '!=',
+                            $this->equipoId
+                        )
+                    )
+                    ->exists();
 
-            'marca_id' => (int) $this->marcaId,
+                if ($serieDuplicada) {
+                    throw ValidationException::withMessages([
+                        'numeroSerie' =>
+                        'Ya existe un equipo con este número de serie.',
+                    ]);
+                }
+            }
 
-            'modelo' => trim($this->modelo) !== ''
+            /* Preparar datos del equipo */
+
+            $datos = [
+                'categoria_id' => (int) $this->categoriaId,
+                'tipo_equipo_id' => (int) $this->tipoEquipoId,
+                'departamento_id' => (int) $this->departamentoId,
+                'marca_id' => (int) $this->marcaId,
+
+                'modelo' => trim($this->modelo) !== ''
                     ? trim($this->modelo)
                     : null,
 
-            'color' => trim($this->color) !== ''
+                'color' => trim($this->color) !== ''
                     ? trim($this->color)
                     : null,
 
-            'numero_serie' => $numeroSerie !== ''
+                'numero_serie' => $numeroSerie !== ''
                     ? $numeroSerie
                     : null,
 
-            'numero_inventario' => $numeroInventario,
+                'numero_inventario' => $numeroInventario,
 
-            'observaciones' => trim($this->observaciones) !== ''
+                'observaciones' => trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
-        ];
+            ];
 
-        if ($this->equipoId === null) {
+            /* Crear equipo y registrar auditoría */
 
-            $datos['creado_por'] = Auth::id();
+            if ($esCreacion) {
 
-            Equipo::create($datos);
+                $datos['creado_por'] = Auth::id();
 
-            session()->flash(
-                'mensaje',
-                'Equipo registrado correctamente.'
-            );
+                $equipo = Equipo::create($datos);
 
-        } else {
+                Auditoria::create([
+                    'modelo' => Equipo::class,
+                    'registro_id' => $equipo->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $equipo->only([
+                        'categoria_id',
+                        'tipo_equipo_id',
+                        'departamento_id',
+                        'marca_id',
+                        'modelo',
+                        'color',
+                        'numero_serie',
+                        'numero_inventario',
+                        'observaciones',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
 
-            $equipo = Equipo::findOrFail(
-                $this->equipoId
-            );
+                /* Detectar cambios administrativos */
 
-            $equipo->update($datos);
+                $equipo->fill($datos);
 
-            session()->flash(
-                'mensaje',
-                'Equipo actualizado correctamente.'
-            );
-        }
+                $valoresNuevos = $equipo->getDirty();
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $equipo->getOriginal($campo);
+                    }
+
+                    /* Guardar el equipo */
+
+                    $equipo->save();
+
+                    /* Registrar únicamente los campos modificados */
+                    Auditoria::create([
+                        'modelo' => Equipo::class,
+                        'registro_id' => $equipo->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+        }, 3);
+
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Equipo registrado correctamente.'
+                : 'Equipo actualizado correctamente.'
+        );
 
         $this->cerrarModal();
-
         $this->resetPage();
     }
+
 
     public function render()
     {
@@ -551,7 +608,7 @@ class Index extends Component
                 function ($query) {
 
                     $buscar =
-                        '%'.trim($this->buscar).'%';
+                        '%' . trim($this->buscar) . '%';
 
                     $query->where(
                         function ($subQuery) use ($buscar) {
