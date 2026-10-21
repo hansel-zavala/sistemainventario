@@ -3,7 +3,9 @@
 namespace App\Livewire\Catalogos\Marcas;
 
 use App\Models\Marca;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -98,12 +100,13 @@ class Index extends Component
     {
         return [
             'nombre.required' =>
-                'El nombre de la marca es obligatorio.',
+            'El nombre de la marca es obligatorio.',
 
             'nombre.max' =>
-                'El nombre no puede superar los 100 caracteres.',
+            'El nombre no puede superar los 100 caracteres.',
         ];
     }
+
 
 
     public function guardarMarca(): void
@@ -111,25 +114,105 @@ class Index extends Component
         $this->validate();
 
         $nombreNormalizado = trim($this->nombre);
+        $esCreacion = $this->marcaId === null;
 
-        $duplicada = Marca::query()
-            ->whereRaw(
-                'LOWER(TRIM(nombre)) = ?',
-                [mb_strtolower($nombreNormalizado)]
-            )
-            ->when(
-                $this->marcaId !== null,
-                function ($query) {
-                    $query->where(
+        $guardado = DB::transaction(function () use (
+            $nombreNormalizado,
+            $esCreacion
+        ) {
+
+            /* Bloquear la marca cuando estamos editando */
+
+            $marca = null;
+
+            if (! $esCreacion) {
+                $marca = Marca::query()
+                    ->whereKey($this->marcaId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            /* Validar que no exista otra marca con el mismo nombre */
+
+            $duplicada = Marca::query()
+                ->whereRaw(
+                    'LOWER(TRIM(nombre)) = ?',
+                    [mb_strtolower($nombreNormalizado)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
                         'id',
                         '!=',
                         $this->marcaId
-                    );
-                }
-            )
-            ->exists();
+                    )
+                )
+                ->exists();
 
-        if ($duplicada) {
+            if ($duplicada) {
+                return false;
+            }
+
+            $datos = [
+                'nombre' => $nombreNormalizado,
+                'activo' => $this->activoMarca,
+            ];
+
+            /* Crear marca */
+
+            if ($esCreacion) {
+
+                $datos['creado_por'] = Auth::id();
+
+                $marca = Marca::create($datos);
+
+                Auditoria::create([
+                    'modelo' => Marca::class,
+                    'registro_id' => $marca->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $marca->only([
+                        'nombre',
+                        'activo',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /* Detectar y guardar solamente los cambios reales */
+
+                $marca->fill($datos);
+
+                $valoresNuevos = $marca->getDirty();
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $marca->getOriginal($campo);
+                    }
+
+                    $marca->save();
+
+                    Auditoria::create([
+                        'modelo' => Marca::class,
+                        'registro_id' => $marca->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+
+            return true;
+        }, 3);
+
+        /* Mostrar error si el nombre está duplicado */
+
+        if (! $guardado) {
             $this->addError(
                 'nombre',
                 'Ya existe una marca con este nombre.'
@@ -138,57 +221,64 @@ class Index extends Component
             return;
         }
 
-        if ($this->marcaId === null) {
-
-            Marca::create([
-                'nombre' => $nombreNormalizado,
-                'activo' => $this->activoMarca,
-                'creado_por' => Auth::id(),
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Marca creada correctamente.'
-            );
-
-        } else {
-
-            $marca = Marca::findOrFail(
-                $this->marcaId
-            );
-
-            $marca->update([
-                'nombre' => $nombreNormalizado,
-                'activo' => $this->activoMarca,
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Marca actualizada correctamente.'
-            );
-        }
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Marca creada correctamente.'
+                : 'Marca actualizada correctamente.'
+        );
 
         $this->cerrarModal();
-
         $this->resetPage();
     }
 
 
+
+
     public function cambiarEstado(int $id): void
     {
-        $marca = Marca::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $marca->update([
-            'activo' => ! $marca->activo,
-        ]);
+            $marca = Marca::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $estadoAnterior = (bool) $marca->activo;
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar el estado de la marca. */
+            $marca->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar la operación en auditoría. */
+            Auditoria::create([
+                'modelo' => Marca::class,
+                'registro_id' => $marca->id,
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+                'usuario_id' => Auth::id(),
+            ]);
+
+            return $nuevoEstado;
+        }, 3);
 
         session()->flash(
             'mensaje',
-            $marca->activo
+            $nuevoEstado
                 ? 'Marca activada correctamente.'
                 : 'Marca desactivada correctamente.'
         );
     }
+
 
 
     public function render()
