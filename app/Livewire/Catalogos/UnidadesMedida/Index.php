@@ -3,7 +3,9 @@
 namespace App\Livewire\Catalogos\UnidadesMedida;
 
 use App\Models\UnidadMedida;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -126,21 +128,22 @@ class Index extends Component
     {
         return [
             'nombreSingular.required' =>
-                'El nombre en singular es obligatorio.',
+            'El nombre en singular es obligatorio.',
 
             'nombreSingular.max' =>
-                'El nombre en singular no puede superar los 50 caracteres.',
+            'El nombre en singular no puede superar los 50 caracteres.',
 
             'nombrePlural.required' =>
-                'El nombre en plural es obligatorio.',
+            'El nombre en plural es obligatorio.',
 
             'nombrePlural.max' =>
-                'El nombre en plural no puede superar los 50 caracteres.',
+            'El nombre en plural no puede superar los 50 caracteres.',
 
             'abreviatura.max' =>
-                'La abreviatura no puede superar los 15 caracteres.',
+            'La abreviatura no puede superar los 15 caracteres.',
         ];
     }
+
 
 
     public function guardarUnidadMedida(): void
@@ -151,24 +154,135 @@ class Index extends Component
         $plural = trim($this->nombrePlural);
         $abreviatura = trim($this->abreviatura);
 
-        $duplicadoSingular = UnidadMedida::query()
-            ->whereRaw(
-                'LOWER(TRIM(nombre_singular)) = ?',
-                [mb_strtolower($singular)]
-            )
-            ->when(
-                $this->unidadMedidaId !== null,
-                function ($query) {
-                    $query->where(
+        $esCreacion = $this->unidadMedidaId === null;
+
+        $resultado = DB::transaction(function () use (
+            $singular,
+            $plural,
+            $abreviatura,
+            $esCreacion
+        ) {
+
+            $unidad = null;
+
+            /* Bloquear el registro en caso de edición. */
+            if (! $esCreacion) {
+                $unidad = UnidadMedida::query()
+                    ->whereKey($this->unidadMedidaId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            /* Validar nombre singular duplicado. */
+            $duplicadoSingular = UnidadMedida::query()
+                ->whereRaw(
+                    'LOWER(TRIM(nombre_singular)) = ?',
+                    [mb_strtolower($singular)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
                         'id',
                         '!=',
                         $this->unidadMedidaId
-                    );
-                }
-            )
-            ->exists();
+                    )
+                )
+                ->exists();
 
-        if ($duplicadoSingular) {
+            if ($duplicadoSingular) {
+                return 'singular';
+            }
+
+            /* Validar nombre plural duplicado. */
+            $duplicadoPlural = UnidadMedida::query()
+                ->whereRaw(
+                    'LOWER(TRIM(nombre_plural)) = ?',
+                    [mb_strtolower($plural)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
+                        'id',
+                        '!=',
+                        $this->unidadMedidaId
+                    )
+                )
+                ->exists();
+
+            if ($duplicadoPlural) {
+                return 'plural';
+            }
+
+            /* Datos generales de la unidad. */
+            $datos = [
+                'nombre_singular' => $singular,
+                'nombre_plural' => $plural,
+
+                'abreviatura' => $abreviatura !== ''
+                    ? $abreviatura
+                    : null,
+
+                'permite_decimales' => $this->permiteDecimales,
+                'activo' => $this->activoUnidad,
+            ];
+
+            /* Creación de una unidad. */
+            if ($esCreacion) {
+
+                $datos['creado_por'] = Auth::id();
+
+                $unidad = UnidadMedida::create($datos);
+
+                Auditoria::create([
+                    'modelo' => UnidadMedida::class,
+                    'registro_id' => $unidad->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $unidad->only([
+                        'nombre_singular',
+                        'nombre_plural',
+                        'abreviatura',
+                        'permite_decimales',
+                        'activo',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /* Detectar exclusivamente los cambios reales. */
+                $unidad->fill($datos);
+
+                $valoresNuevos = $unidad->getDirty();
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $unidad->getOriginal($campo);
+                    }
+
+                    /* Guardar datos actualizados. */
+                    $unidad->save();
+
+                    /* Guardar auditoría en la misma transacción. */
+                    Auditoria::create([
+                        'modelo' => UnidadMedida::class,
+                        'registro_id' => $unidad->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+
+            return 'ok';
+        }, 3);
+
+        /* Mostrar errores de duplicados. */
+        if ($resultado === 'singular') {
             $this->addError(
                 'nombreSingular',
                 'Ya existe una unidad de medida con este nombre en singular.'
@@ -177,24 +291,7 @@ class Index extends Component
             return;
         }
 
-        $duplicadoPlural = UnidadMedida::query()
-            ->whereRaw(
-                'LOWER(TRIM(nombre_plural)) = ?',
-                [mb_strtolower($plural)]
-            )
-            ->when(
-                $this->unidadMedidaId !== null,
-                function ($query) {
-                    $query->where(
-                        'id',
-                        '!=',
-                        $this->unidadMedidaId
-                    );
-                }
-            )
-            ->exists();
-
-        if ($duplicadoPlural) {
+        if ($resultado === 'plural') {
             $this->addError(
                 'nombrePlural',
                 'Ya existe una unidad de medida con este nombre en plural.'
@@ -203,67 +300,64 @@ class Index extends Component
             return;
         }
 
-        if ($this->unidadMedidaId === null) {
-
-            UnidadMedida::create([
-                'nombre_singular' => $singular,
-                'nombre_plural' => $plural,
-                'abreviatura' => $abreviatura !== ''
-                    ? $abreviatura
-                    : null,
-                'permite_decimales' => $this->permiteDecimales,
-                'activo' => $this->activoUnidad,
-                'creado_por' => Auth::id(),
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Unidad de medida creada correctamente.'
-            );
-
-        } else {
-
-            $unidad = UnidadMedida::findOrFail(
-                $this->unidadMedidaId
-            );
-
-            $unidad->update([
-                'nombre_singular' => $singular,
-                'nombre_plural' => $plural,
-                'abreviatura' => $abreviatura !== ''
-                    ? $abreviatura
-                    : null,
-                'permite_decimales' => $this->permiteDecimales,
-                'activo' => $this->activoUnidad,
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Unidad de medida actualizada correctamente.'
-            );
-        }
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Unidad de medida creada correctamente.'
+                : 'Unidad de medida actualizada correctamente.'
+        );
 
         $this->cerrarModal();
-
         $this->resetPage();
     }
 
 
+
+
     public function cambiarEstado(int $id): void
     {
-        $unidad = UnidadMedida::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $unidad->update([
-            'activo' => ! $unidad->activo,
-        ]);
+            $unidad = UnidadMedida::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $estadoAnterior = (bool) $unidad->activo;
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar el estado. */
+            $unidad->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar la auditoría del cambio. */
+            Auditoria::create([
+                'modelo' => UnidadMedida::class,
+                'registro_id' => $unidad->id,
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+                'usuario_id' => Auth::id(),
+            ]);
+
+            return $nuevoEstado;
+        }, 3);
 
         session()->flash(
             'mensaje',
-            $unidad->activo
+            $nuevoEstado
                 ? 'Unidad de medida activada correctamente.'
                 : 'Unidad de medida desactivada correctamente.'
         );
     }
+
 
 
     public function render()
