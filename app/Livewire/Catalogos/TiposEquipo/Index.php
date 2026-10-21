@@ -3,7 +3,9 @@
 namespace App\Livewire\Catalogos\TiposEquipo;
 
 use App\Models\TipoEquipo;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -98,12 +100,13 @@ class Index extends Component
     {
         return [
             'nombre.required' =>
-                'El nombre del tipo de equipo es obligatorio.',
+            'El nombre del tipo de equipo es obligatorio.',
 
             'nombre.max' =>
-                'El nombre no puede superar los 100 caracteres.',
+            'El nombre no puede superar los 100 caracteres.',
         ];
     }
+
 
 
     public function guardarTipoEquipo(): void
@@ -112,24 +115,107 @@ class Index extends Component
 
         $nombreNormalizado = trim($this->nombre);
 
-        $duplicado = TipoEquipo::query()
-            ->whereRaw(
-                'LOWER(TRIM(nombre)) = ?',
-                [mb_strtolower($nombreNormalizado)]
-            )
-            ->when(
-                $this->tipoEquipoId !== null,
-                function ($query) {
-                    $query->where(
+        $esCreacion = $this->tipoEquipoId === null;
+
+        $guardado = DB::transaction(function () use (
+            $nombreNormalizado,
+            $esCreacion
+        ) {
+
+            /* Obtener y bloquear el registro durante la edición */
+
+            $tipoEquipo = null;
+
+            if (! $esCreacion) {
+                $tipoEquipo = TipoEquipo::query()
+                    ->whereKey($this->tipoEquipoId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            /* Validar nombres duplicados */
+
+            $duplicado = TipoEquipo::query()
+                ->whereRaw(
+                    'LOWER(TRIM(nombre)) = ?',
+                    [mb_strtolower($nombreNormalizado)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
                         'id',
                         '!=',
                         $this->tipoEquipoId
-                    );
-                }
-            )
-            ->exists();
+                    )
+                )
+                ->exists();
 
-        if ($duplicado) {
+            if ($duplicado) {
+                return false;
+            }
+
+            /* Preparar los datos */
+
+            $datos = [
+                'nombre' => $nombreNormalizado,
+                'activo' => $this->activoTipoEquipo,
+            ];
+
+            /* Crear tipo de equipo */
+
+            if ($esCreacion) {
+
+                $datos['creado_por'] = Auth::id();
+
+                $tipoEquipo = TipoEquipo::create($datos);
+
+                Auditoria::create([
+                    'modelo' => TipoEquipo::class,
+                    'registro_id' => $tipoEquipo->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $tipoEquipo->only([
+                        'nombre',
+                        'activo',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /* Registrar solamente cambios reales */
+
+                $tipoEquipo->fill($datos);
+
+                $valoresNuevos = $tipoEquipo->getDirty();
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $tipoEquipo->getOriginal($campo);
+                    }
+
+                    $tipoEquipo->save();
+
+                    Auditoria::create([
+                        'modelo' => TipoEquipo::class,
+                        'registro_id' => $tipoEquipo->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+
+            return true;
+        }, 3);
+
+        /* Mostrar error cuando exista un duplicado */
+
+        if (! $guardado) {
             $this->addError(
                 'nombre',
                 'Ya existe un tipo de equipo con este nombre.'
@@ -138,35 +224,12 @@ class Index extends Component
             return;
         }
 
-        if ($this->tipoEquipoId === null) {
-
-            TipoEquipo::create([
-                'nombre' => $nombreNormalizado,
-                'activo' => $this->activoTipoEquipo,
-                'creado_por' => Auth::id(),
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Tipo de equipo creado correctamente.'
-            );
-
-        } else {
-
-            $tipoEquipo = TipoEquipo::findOrFail(
-                $this->tipoEquipoId
-            );
-
-            $tipoEquipo->update([
-                'nombre' => $nombreNormalizado,
-                'activo' => $this->activoTipoEquipo,
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Tipo de equipo actualizado correctamente.'
-            );
-        }
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Tipo de equipo creado correctamente.'
+                : 'Tipo de equipo actualizado correctamente.'
+        );
 
         $this->cerrarModal();
 
@@ -174,21 +237,52 @@ class Index extends Component
     }
 
 
+
+
     public function cambiarEstado(int $id): void
     {
-        $tipoEquipo = TipoEquipo::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $tipoEquipo->update([
-            'activo' => ! $tipoEquipo->activo,
-        ]);
+            $tipoEquipo = TipoEquipo::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $estadoAnterior = (bool) $tipoEquipo->activo;
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar estado. */
+            $tipoEquipo->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar auditoría del cambio. */
+            Auditoria::create([
+                'modelo' => TipoEquipo::class,
+                'registro_id' => $tipoEquipo->id,
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+                'usuario_id' => Auth::id(),
+            ]);
+
+            return $nuevoEstado;
+        }, 3);
 
         session()->flash(
             'mensaje',
-            $tipoEquipo->activo
+            $nuevoEstado
                 ? 'Tipo de equipo activado correctamente.'
                 : 'Tipo de equipo desactivado correctamente.'
         );
     }
+
 
 
     public function render()
