@@ -3,7 +3,9 @@
 namespace App\Livewire\Catalogos\Departamentos;
 
 use App\Models\Departamento;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -108,15 +110,16 @@ class Index extends Component
     {
         return [
             'nombre.required' =>
-                'El nombre del departamento es obligatorio.',
+            'El nombre del departamento es obligatorio.',
 
             'nombre.max' =>
-                'El nombre no puede superar los 150 caracteres.',
+            'El nombre no puede superar los 150 caracteres.',
 
             'sigla.max' =>
-                'La sigla no puede superar los 20 caracteres.',
+            'La sigla no puede superar los 20 caracteres.',
         ];
     }
+
 
 
     public function guardarDepartamento(): void
@@ -124,27 +127,118 @@ class Index extends Component
         $this->validate();
 
         $nombreNormalizado = trim($this->nombre);
-
         $siglaNormalizada = trim($this->sigla);
 
-        $duplicado = Departamento::query()
-            ->whereRaw(
-                'LOWER(TRIM(nombre)) = ?',
-                [mb_strtolower($nombreNormalizado)]
-            )
-            ->when(
-                $this->departamentoId !== null,
-                function ($query) {
-                    $query->where(
+        $esCreacion = $this->departamentoId === null;
+
+        $guardado = DB::transaction(function () use (
+            $nombreNormalizado,
+            $siglaNormalizada,
+            $esCreacion
+        ) {
+
+            /* Obtener y bloquear el departamento durante la edición */
+
+            $departamento = null;
+
+            if (! $esCreacion) {
+                $departamento = Departamento::query()
+                    ->whereKey($this->departamentoId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            /* Validar nombres duplicados */
+
+            $duplicado = Departamento::query()
+                ->whereRaw(
+                    'LOWER(TRIM(nombre)) = ?',
+                    [mb_strtolower($nombreNormalizado)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
                         'id',
                         '!=',
                         $this->departamentoId
-                    );
-                }
-            )
-            ->exists();
+                    )
+                )
+                ->exists();
 
-        if ($duplicado) {
+            if ($duplicado) {
+                return false;
+            }
+
+            /* Preparar datos generales */
+
+            $datos = [
+                'nombre' => $nombreNormalizado,
+
+                'sigla' => $siglaNormalizada !== ''
+                    ? strtoupper($siglaNormalizada)
+                    : null,
+
+                'activo' => $this->activoDepartamento,
+            ];
+
+            /* Crear departamento */
+
+            if ($esCreacion) {
+
+                $datos['creado_por'] = Auth::id();
+
+                $departamento = Departamento::create($datos);
+
+                Auditoria::create([
+                    'modelo' => Departamento::class,
+                    'registro_id' => $departamento->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $departamento->only([
+                        'nombre',
+                        'sigla',
+                        'activo',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /* Identificar los cambios reales */
+
+                $departamento->fill($datos);
+
+                $valoresNuevos = $departamento->getDirty();
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $departamento->getOriginal($campo);
+                    }
+
+                    /* Guardar las modificaciones. */
+                    $departamento->save();
+
+                    /* Registrar cambios en auditoría. */
+                    Auditoria::create([
+                        'modelo' => Departamento::class,
+                        'registro_id' => $departamento->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+
+            return true;
+        }, 3);
+
+        /* Mensajes y cierre */
+
+        if (! $guardado) {
             $this->addError(
                 'nombre',
                 'Ya existe un departamento con este nombre.'
@@ -153,63 +247,73 @@ class Index extends Component
             return;
         }
 
-        if ($this->departamentoId === null) {
-
-            Departamento::create([
-                'nombre' => $nombreNormalizado,
-                'sigla' => $siglaNormalizada !== ''
-                    ? strtoupper($siglaNormalizada)
-                    : null,
-                'activo' => $this->activoDepartamento,
-                'creado_por' => Auth::id(),
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Departamento creado correctamente.'
-            );
-
-        } else {
-
-            $departamento = Departamento::findOrFail(
-                $this->departamentoId
-            );
-
-            $departamento->update([
-                'nombre' => $nombreNormalizado,
-                'sigla' => $siglaNormalizada !== ''
-                    ? strtoupper($siglaNormalizada)
-                    : null,
-                'activo' => $this->activoDepartamento,
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Departamento actualizado correctamente.'
-            );
-        }
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Departamento creado correctamente.'
+                : 'Departamento actualizado correctamente.'
+        );
 
         $this->cerrarModal();
-
         $this->resetPage();
     }
 
 
+
+
     public function cambiarEstado(int $id): void
     {
-        $departamento = Departamento::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $departamento->update([
-            'activo' => ! $departamento->activo,
-        ]);
+            /* Obtener y bloquear el departamento */
+
+            $departamento = Departamento::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $estadoAnterior = (bool) $departamento->activo;
+
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar estado */
+
+            $departamento->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar auditoría del cambio de estado */
+
+            Auditoria::create([
+                'modelo' => Departamento::class,
+                'registro_id' => $departamento->id,
+
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+
+                'usuario_id' => Auth::id(),
+            ]);
+
+            return $nuevoEstado;
+        }, 3);
 
         session()->flash(
             'mensaje',
-            $departamento->activo
+            $nuevoEstado
                 ? 'Departamento activado correctamente.'
                 : 'Departamento desactivado correctamente.'
         );
     }
+
 
 
     public function render()
