@@ -3,7 +3,9 @@
 namespace App\Livewire\Catalogos\Categorias;
 
 use App\Models\Categoria;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -115,18 +117,19 @@ class Index extends Component
     {
         return [
             'nombre.required' =>
-                'El nombre de la categoría es obligatorio.',
+            'El nombre de la categoría es obligatorio.',
 
             'nombre.max' =>
-                'El nombre no puede superar los 100 caracteres.',
+            'El nombre no puede superar los 100 caracteres.',
 
             'aplicaA.required' =>
-                'Debe seleccionar a qué tipo de inventario aplica la categoría.',
+            'Debe seleccionar a qué tipo de inventario aplica la categoría.',
 
             'aplicaA.in' =>
-                'El tipo seleccionado no es válido.',
+            'El tipo seleccionado no es válido.',
         ];
     }
+
 
 
     public function guardarCategoria(): void
@@ -135,25 +138,114 @@ class Index extends Component
 
         $nombreNormalizado = trim($this->nombre);
 
-        $duplicada = Categoria::query()
-            ->where('aplica_a', $this->aplicaA)
-            ->whereRaw(
-                'LOWER(TRIM(nombre)) = ?',
-                [mb_strtolower($nombreNormalizado)]
-            )
-            ->when(
-                $this->categoriaId !== null,
-                function ($query) {
-                    $query->where(
+        $esCreacion = $this->categoriaId === null;
+
+        $guardado = DB::transaction(function () use (
+            $nombreNormalizado,
+            $esCreacion
+        ) {
+
+            /* Obtener la categoría actual para edición */
+
+            $categoria = null;
+
+            if (! $esCreacion) {
+                $categoria = Categoria::query()
+                    ->whereKey($this->categoriaId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            /* Validar nombre duplicado para el mismo tipo */
+
+            $duplicada = Categoria::query()
+                ->where('aplica_a', $this->aplicaA)
+                ->whereRaw(
+                    'LOWER(TRIM(nombre)) = ?',
+                    [mb_strtolower($nombreNormalizado)]
+                )
+                ->when(
+                    ! $esCreacion,
+                    fn($query) => $query->where(
                         'id',
                         '!=',
                         $this->categoriaId
-                    );
-                }
-            )
-            ->exists();
+                    )
+                )
+                ->exists();
 
-        if ($duplicada) {
+            if ($duplicada) {
+                return false;
+            }
+
+            /* Preparar datos generales */
+
+            $datos = [
+                'nombre' => $nombreNormalizado,
+                'aplica_a' => $this->aplicaA,
+                'activo' => $this->activoCategoria,
+            ];
+
+            /* Registrar nueva categoría */
+
+            if ($esCreacion) {
+
+                $datos['creado_por'] = Auth::id();
+
+                $categoria = Categoria::create($datos);
+
+                Auditoria::create([
+                    'modelo' => Categoria::class,
+                    'registro_id' => $categoria->id,
+                    'accion' => 'creacion',
+
+                    'valores_anteriores' => null,
+
+                    'valores_nuevos' => $categoria->only([
+                        'nombre',
+                        'aplica_a',
+                        'activo',
+                    ]),
+
+                    'usuario_id' => Auth::id(),
+                ]);
+            } else {
+
+                /* Detectar cambios reales */
+
+                $categoria->fill($datos);
+
+                $valoresNuevos = $categoria->getDirty();
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $categoria->getOriginal($campo);
+                    }
+
+                    $categoria->save();
+
+                    /* Guardar los cambios en auditoría */
+                    Auditoria::create([
+                        'modelo' => Categoria::class,
+                        'registro_id' => $categoria->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
+            }
+
+            return true;
+        }, 3);
+
+        /* Validación y mensajes */
+
+        if (! $guardado) {
             $this->addError(
                 'nombre',
                 'Ya existe una categoría con este nombre para el tipo seleccionado.'
@@ -162,37 +254,12 @@ class Index extends Component
             return;
         }
 
-        if ($this->categoriaId === null) {
-
-            Categoria::create([
-                'nombre' => $nombreNormalizado,
-                'aplica_a' => $this->aplicaA,
-                'activo' => $this->activoCategoria,
-                'creado_por' => Auth::id(),
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Categoría creada correctamente.'
-            );
-
-        } else {
-
-            $categoria = Categoria::findOrFail(
-                $this->categoriaId
-            );
-
-            $categoria->update([
-                'nombre' => $nombreNormalizado,
-                'aplica_a' => $this->aplicaA,
-                'activo' => $this->activoCategoria,
-            ]);
-
-            session()->flash(
-                'mensaje',
-                'Categoría actualizada correctamente.'
-            );
-        }
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Categoría creada correctamente.'
+                : 'Categoría actualizada correctamente.'
+        );
 
         $this->cerrarModal();
 
@@ -200,17 +267,56 @@ class Index extends Component
     }
 
 
+
+
     public function cambiarEstado(int $id): void
     {
-        $categoria = Categoria::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $categoria->update([
-            'activo' => ! $categoria->activo,
-        ]);
+            /* Obtener y bloquear la categoría */
+
+            $categoria = Categoria::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $estadoAnterior = (bool) $categoria->activo;
+
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar estado */
+
+            $categoria->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar auditoría */
+
+            Auditoria::create([
+                'modelo' => Categoria::class,
+                'registro_id' => $categoria->id,
+
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+
+                'usuario_id' => Auth::id(),
+            ]);
+
+            return $nuevoEstado;
+        }, 3);
 
         session()->flash(
             'mensaje',
-            $categoria->activo
+            $nuevoEstado
                 ? 'Categoría activada correctamente.'
                 : 'Categoría desactivada correctamente.'
         );
