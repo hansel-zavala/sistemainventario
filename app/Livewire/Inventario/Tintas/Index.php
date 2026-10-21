@@ -6,6 +6,7 @@ use App\Models\Marca;
 use App\Models\Tinta;
 use App\Models\MovimientoInventarioDetalle;
 use App\Models\RecargaTintaDetalle;
+use App\Models\Auditoria;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -277,11 +278,7 @@ class Index extends Component
             $stockMinimo
         ) {
 
-            /*
-        |--------------------------------------------------------------------------
-        | Obtener y bloquear la tinta cuando estamos editando
-        |--------------------------------------------------------------------------
-        */
+            /* Obtener y bloquear la tinta cuando estamos editando */
 
             $tinta = null;
 
@@ -293,11 +290,7 @@ class Index extends Component
                     ->firstOrFail();
             }
 
-            /*
-        |--------------------------------------------------------------------------
-        | Validar que no exista una tinta duplicada
-        |--------------------------------------------------------------------------
-        */
+            /* Validar que no exista una tinta duplicada */
 
             $duplicada = Tinta::query()
                 ->whereRaw(
@@ -336,15 +329,9 @@ class Index extends Component
                 ]);
             }
 
-            /*
-        |--------------------------------------------------------------------------
-        | Preparar datos generales
-        |--------------------------------------------------------------------------
-        |
-        | No incluimos las existencias de tinta
-        | porque al editar deben conservarse.
-        |
-        */
+            /* Preparar datos generales */
+
+            /* No incluimos las existencias de tinta porque al editar deben conservarse.*/
 
             $datos = [
                 'nombre' => $nombre,
@@ -368,22 +355,15 @@ class Index extends Component
                 'activo' => $this->activoTinta,
             ];
 
-            /*
-        |--------------------------------------------------------------------------
-        | Crear una nueva tinta
-        |--------------------------------------------------------------------------
-        */
+            /* Crear una nueva tinta */
+
 
             if ($esCreacion) {
 
-                // Solo al crear se registran existencias iniciales.
+                /*  Crear tinta y registrar apertura inicial */
 
-                $datos['botellas_completas'] =
-                    $botellasIniciales;
-
-                $datos['porcentaje_botella_abierta'] =
-                    $porcentajeInicial;
-
+                $datos['botellas_completas'] = $botellasIniciales;
+                $datos['porcentaje_botella_abierta'] = $porcentajeInicial;
                 $datos['creado_por'] = Auth::id();
 
                 $tinta = Tinta::create($datos);
@@ -403,17 +383,59 @@ class Index extends Component
                         . number_format($porcentajeInicial, 2, '.', '')
                         . '%'
                 );
+
+                /* Auditoría de creación */
+
+                Auditoria::create([
+                    'modelo' => Tinta::class,
+                    'registro_id' => $tinta->id,
+                    'accion' => 'creacion',
+                    'valores_anteriores' => null,
+                    'valores_nuevos' => $tinta->only([
+                        'nombre',
+                        'marca_id',
+                        'color',
+                        'presentacion',
+                        'botellas_completas',
+                        'porcentaje_botella_abierta',
+                        'stock_minimo_botellas',
+                        'observaciones',
+                        'activo',
+                    ]),
+                    'usuario_id' => Auth::id(),
+                ]);
             } else {
 
-                /*
-             * Al editar se conservan las botellas
-             * y el porcentaje almacenados en la BD.
-             *
-             * Las Entradas, Salidas y Recargas
-             * son las encargadas de modificarlos.
-             */
+                /* Identificar cambios administrativos*/
 
-                $tinta->update($datos);
+                $tinta->fill($datos);
+
+                $valoresNuevos = $tinta->getDirty();
+
+                /* No registrar actualizaciones sin cambios. */
+
+                if (! empty($valoresNuevos)) {
+
+                    $valoresAnteriores = [];
+
+                    foreach ($valoresNuevos as $campo => $valor) {
+                        $valoresAnteriores[$campo] =
+                            $tinta->getOriginal($campo);
+                    }
+
+                    /* Actualizar exclusivamente los datos generales.*/
+                    $tinta->save();
+
+                    /* Registrar los valores anteriores y nuevos.*/
+                    Auditoria::create([
+                        'modelo' => Tinta::class,
+                        'registro_id' => $tinta->id,
+                        'accion' => 'actualizacion',
+                        'valores_anteriores' => $valoresAnteriores,
+                        'valores_nuevos' => $valoresNuevos,
+                        'usuario_id' => Auth::id(),
+                    ]);
+                }
             }
         }, 3);
 
@@ -430,21 +452,60 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
-        $tinta = Tinta::findOrFail($id);
+        $nuevoEstado = DB::transaction(function () use ($id) {
 
-        $tinta->update([
-            'activo' => ! $tinta->activo,
-        ]);
+            /* Obtener y bloquear la tinta */
+
+            $tinta = Tinta::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $estadoAnterior = (bool) $tinta->activo;
+
+            $nuevoEstado = ! $estadoAnterior;
+
+            /* Actualizar estado */
+
+            $tinta->update([
+                'activo' => $nuevoEstado,
+            ]);
+
+            /* Registrar auditoría de estado */
+
+            Auditoria::create([
+                'modelo' => Tinta::class,
+                'registro_id' => $tinta->id,
+
+                'accion' => $nuevoEstado
+                    ? 'activacion'
+                    : 'desactivacion',
+
+                'valores_anteriores' => [
+                    'activo' => $estadoAnterior,
+                ],
+
+                'valores_nuevos' => [
+                    'activo' => $nuevoEstado,
+                ],
+
+                'usuario_id' => Auth::id(),
+            ]);
+
+            return $nuevoEstado;
+        }, 3);
 
         session()->flash(
             'mensaje',
-            $tinta->activo
+            $nuevoEstado
                 ? 'Tinta activada correctamente.'
                 : 'Tinta desactivada correctamente.'
         );
     }
+
 
 
     public function abrirHistorial(int $id): void
@@ -552,11 +613,7 @@ class Index extends Component
             ->pluck('color');
 
 
-        /*
-|--------------------------------------------------------------------------
-| Historial completo de tinta
-|--------------------------------------------------------------------------
-*/
+        /* Historial completo de tinta */
 
         $eventosHistorial = collect();
 
@@ -566,9 +623,8 @@ class Index extends Component
         ) {
             $tintaId = $this->historialTintaId;
 
-            /*
-     * 1. Aperturas, Entradas y Salidas
-     */
+            /* Aperturas, Entradas y Salidas */
+
             $movimientos = MovimientoInventarioDetalle::query()
                 ->with([
                     'movimiento.usuario',
@@ -614,9 +670,8 @@ class Index extends Component
                 ]);
             }
 
-            /*
-     * 2. Recargas de impresoras
-     */
+            /* Recargas de impresoras */
+
             $recargas = RecargaTintaDetalle::query()
                 ->with([
                     'recarga.usuario',
@@ -692,9 +747,8 @@ class Index extends Component
                 ]);
             }
 
-            /*
-     * 3. Unificar y ordenar todos los eventos
-     */
+            /* Unificar y ordenar todos los eventos */
+
             $eventosHistorial = $eventosHistorial
                 ->sort(function ($a, $b) {
 
