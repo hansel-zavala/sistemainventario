@@ -8,6 +8,7 @@ use App\Models\Equipo;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
 use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -174,6 +175,7 @@ class Index extends Component
         ];
     }
 
+
     public function guardarCatalogoRapido(): void
     {
         $this->validate(
@@ -183,120 +185,166 @@ class Index extends Component
 
         $nombre = trim($this->nuevoNombreCatalogo);
 
-        if ($this->tipoCatalogo === 'categoria') {
+        $guardado = DB::transaction(function () use ($nombre) {
 
-            $duplicada = Categoria::query()
-                ->where('aplica_a', 'equipo')
-                ->whereRaw(
-                    'LOWER(TRIM(nombre)) = ?',
-                    [mb_strtolower($nombre)]
-                )
-                ->exists();
+            /* Categoría */
 
-            if ($duplicada) {
-                $this->addError(
-                    'nuevoNombreCatalogo',
-                    'Ya existe una categoría con este nombre.'
-                );
+            if ($this->tipoCatalogo === 'categoria') {
 
-                return;
+                $duplicada = Categoria::query()
+                    ->where('aplica_a', 'equipo')
+                    ->whereRaw(
+                        'LOWER(TRIM(nombre)) = ?',
+                        [mb_strtolower($nombre)]
+                    )
+                    ->exists();
+
+                if ($duplicada) {
+                    $this->addError(
+                        'nuevoNombreCatalogo',
+                        'Ya existe una categoría con este nombre.'
+                    );
+
+                    return false;
+                }
+
+                $categoria = Categoria::create([
+                    'nombre' => $nombre,
+                    'aplica_a' => 'equipo',
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($categoria, [
+                    'nombre',
+                    'aplica_a',
+                    'activo',
+                ]);
+
+                $this->categoriaId = (string) $categoria->id;
+
+                return true;
             }
 
-            $categoria = Categoria::create([
-                'nombre' => $nombre,
-                'aplica_a' => 'equipo',
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+            /* Tipo de equipo */
 
-            $this->categoriaId = (string) $categoria->id;
-        }
+            if ($this->tipoCatalogo === 'tipo_equipo') {
 
-        if ($this->tipoCatalogo === 'tipo_equipo') {
+                $duplicado = TipoEquipo::query()
+                    ->whereRaw(
+                        'LOWER(TRIM(nombre)) = ?',
+                        [mb_strtolower($nombre)]
+                    )
+                    ->exists();
 
-            $duplicado = TipoEquipo::query()
-                ->whereRaw(
-                    'LOWER(TRIM(nombre)) = ?',
-                    [mb_strtolower($nombre)]
-                )
-                ->exists();
+                if ($duplicado) {
+                    $this->addError(
+                        'nuevoNombreCatalogo',
+                        'Ya existe un tipo de equipo con este nombre.'
+                    );
 
-            if ($duplicado) {
-                $this->addError(
-                    'nuevoNombreCatalogo',
-                    'Ya existe un tipo de equipo con este nombre.'
-                );
+                    return false;
+                }
 
-                return;
+                $tipoEquipo = TipoEquipo::create([
+                    'nombre' => $nombre,
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($tipoEquipo, [
+                    'nombre',
+                    'activo',
+                ]);
+
+                $this->tipoEquipoId = (string) $tipoEquipo->id;
+
+                return true;
             }
 
-            $tipoEquipo = TipoEquipo::create([
-                'nombre' => $nombre,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+            /* Departamento */
 
-            $this->tipoEquipoId = (string) $tipoEquipo->id;
-        }
+            if ($this->tipoCatalogo === 'departamento') {
 
-        if ($this->tipoCatalogo === 'departamento') {
+                $duplicado = Departamento::query()
+                    ->whereRaw(
+                        'LOWER(TRIM(nombre)) = ?',
+                        [mb_strtolower($nombre)]
+                    )
+                    ->exists();
 
-            $duplicado = Departamento::query()
-                ->whereRaw(
-                    'LOWER(TRIM(nombre)) = ?',
-                    [mb_strtolower($nombre)]
-                )
-                ->exists();
+                if ($duplicado) {
+                    $this->addError(
+                        'nuevoNombreCatalogo',
+                        'Ya existe un departamento con este nombre.'
+                    );
 
-            if ($duplicado) {
-                $this->addError(
-                    'nuevoNombreCatalogo',
-                    'Ya existe un departamento con este nombre.'
-                );
+                    return false;
+                }
 
-                return;
+                $sigla = trim($this->nuevaSiglaDepartamento);
+
+                $departamento = Departamento::create([
+                    'nombre' => $nombre,
+                    'sigla' => $sigla !== ''
+                        ? strtoupper($sigla)
+                        : null,
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($departamento, [
+                    'nombre',
+                    'sigla',
+                    'activo',
+                ]);
+
+                $this->departamentoId = (string) $departamento->id;
+
+                return true;
             }
 
-            $sigla = trim($this->nuevaSiglaDepartamento);
+            /* Marca */
 
-            $departamento = Departamento::create([
-                'nombre' => $nombre,
-                'sigla' => $sigla !== ''
-                    ? strtoupper($sigla)
-                    : null,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+            if ($this->tipoCatalogo === 'marca') {
 
-            $this->departamentoId =
-                (string) $departamento->id;
-        }
+                $duplicada = Marca::query()
+                    ->whereRaw(
+                        'LOWER(TRIM(nombre)) = ?',
+                        [mb_strtolower($nombre)]
+                    )
+                    ->exists();
 
-        if ($this->tipoCatalogo === 'marca') {
+                if ($duplicada) {
+                    $this->addError(
+                        'nuevoNombreCatalogo',
+                        'Ya existe una marca con este nombre.'
+                    );
 
-            $duplicada = Marca::query()
-                ->whereRaw(
-                    'LOWER(TRIM(nombre)) = ?',
-                    [mb_strtolower($nombre)]
-                )
-                ->exists();
+                    return false;
+                }
 
-            if ($duplicada) {
-                $this->addError(
-                    'nuevoNombreCatalogo',
-                    'Ya existe una marca con este nombre.'
-                );
+                $marca = Marca::create([
+                    'nombre' => $nombre,
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
 
-                return;
+                RegistrarAuditoria::creacion($marca, [
+                    'nombre',
+                    'activo',
+                ]);
+
+                $this->marcaId = (string) $marca->id;
+
+                return true;
             }
 
-            $marca = Marca::create([
-                'nombre' => $nombre,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+            return false;
+        }, 3);
 
-            $this->marcaId = (string) $marca->id;
+        if (! $guardado) {
+            return;
         }
 
         $this->cerrarModalCatalogo();
@@ -306,6 +354,7 @@ class Index extends Component
             'Registro creado y seleccionado correctamente.'
         );
     }
+
 
     private function resetFormulario(): void
     {
