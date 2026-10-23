@@ -3,7 +3,7 @@
 namespace App\Livewire\Catalogos\UnidadesMedida;
 
 use App\Models\UnidadMedida;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -227,56 +227,25 @@ class Index extends Component
             ];
 
             /* Creación de una unidad. */
+
             if ($esCreacion) {
 
                 $datos['creado_por'] = Auth::id();
 
                 $unidad = UnidadMedida::create($datos);
 
-                Auditoria::create([
-                    'modelo' => UnidadMedida::class,
-                    'registro_id' => $unidad->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $unidad->only([
-                        'nombre_singular',
-                        'nombre_plural',
-                        'abreviatura',
-                        'permite_decimales',
-                        'activo',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($unidad, [
+                    'nombre_singular',
+                    'nombre_plural',
+                    'abreviatura',
+                    'permite_decimales',
+                    'activo',
                 ]);
             } else {
-
-                /* Detectar exclusivamente los cambios reales. */
                 $unidad->fill($datos);
-
-                $valoresNuevos = $unidad->getDirty();
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $unidad->getOriginal($campo);
-                    }
-
-                    /* Guardar datos actualizados. */
-                    $unidad->save();
-
-                    /* Guardar auditoría en la misma transacción. */
-                    Auditoria::create([
-                        'modelo' => UnidadMedida::class,
-                        'registro_id' => $unidad->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($unidad);
             }
+
 
             return 'ok';
         }, 3);
@@ -314,10 +283,12 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
 
+            /* Obtener y bloquear la unidad. */
             $unidad = UnidadMedida::query()
                 ->whereKey($id)
                 ->lockForUpdate()
@@ -331,21 +302,12 @@ class Index extends Component
                 'activo' => $nuevoEstado,
             ]);
 
-            /* Registrar la auditoría del cambio. */
-            Auditoria::create([
-                'modelo' => UnidadMedida::class,
-                'registro_id' => $unidad->id,
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-                'usuario_id' => Auth::id(),
-            ]);
+            /* Registrar mediante el servicio compartido. */
+            RegistrarAuditoria::cambioEstado(
+                $unidad,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             return $nuevoEstado;
         }, 3);
@@ -357,6 +319,7 @@ class Index extends Component
                 : 'Unidad de medida desactivada correctamente.'
         );
     }
+
 
 
 
