@@ -8,7 +8,7 @@ use App\Models\PrestamoDetalle;
 use App\Models\Marca;
 use App\Models\UnidadMedida;
 use App\Models\MovimientoInventario;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -256,12 +256,24 @@ class Index extends Component
                 return;
             }
 
-            $categoria = Categoria::create([
-                'nombre' => $nombre,
-                'aplica_a' => 'herramienta',
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+
+            $categoria = DB::transaction(function () use ($nombre) {
+
+                $categoria = Categoria::create([
+                    'nombre' => $nombre,
+                    'aplica_a' => 'herramienta',
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($categoria, [
+                    'nombre',
+                    'aplica_a',
+                    'activo',
+                ]);
+
+                return $categoria;
+            }, 3);
 
             $this->categoriaId = (string) $categoria->id;
         }
@@ -284,11 +296,22 @@ class Index extends Component
                 return;
             }
 
-            $marca = Marca::create([
-                'nombre' => $nombre,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+
+            $marca = DB::transaction(function () use ($nombre) {
+
+                $marca = Marca::create([
+                    'nombre' => $nombre,
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($marca, [
+                    'nombre',
+                    'activo',
+                ]);
+
+                return $marca;
+            }, 3);
 
             $this->marcaId = (string) $marca->id;
         }
@@ -331,14 +354,35 @@ class Index extends Component
                 return;
             }
 
-            $unidad = UnidadMedida::create([
-                'nombre_singular' => $singular,
-                'nombre_plural' => $plural,
-                'abreviatura' => $abreviatura !== '' ? $abreviatura : null,
-                'permite_decimales' => $this->nuevoPermiteDecimalesUnidad,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+
+            $unidad = DB::transaction(function () use (
+                $singular,
+                $plural,
+                $abreviatura
+            ) {
+
+                $unidad = UnidadMedida::create([
+                    'nombre_singular' => $singular,
+                    'nombre_plural' => $plural,
+                    'abreviatura' => $abreviatura !== ''
+                        ? $abreviatura
+                        : null,
+                    'permite_decimales' =>
+                    $this->nuevoPermiteDecimalesUnidad,
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($unidad, [
+                    'nombre_singular',
+                    'nombre_plural',
+                    'abreviatura',
+                    'permite_decimales',
+                    'activo',
+                ]);
+
+                return $unidad;
+            }, 3);
 
             $this->unidadMedidaId = (string) $unidad->id;
         }
@@ -491,9 +535,7 @@ class Index extends Component
             $esCreacion,
             $cantidadInicial
         ) {
-            /*
-         * Bloquear el registro durante la edición.
-         */
+            /* Bloquear el registro durante la edición. */
             $herramienta = null;
 
             if (! $esCreacion) {
@@ -503,9 +545,7 @@ class Index extends Component
                     ->firstOrFail();
             }
 
-            /*
-         * Validar código interno único.
-         */
+            /* Validar código interno único. */
             if ($this->tipoControl === 'individual') {
                 $codigoDuplicado = Herramienta::query()
                     ->whereRaw(
@@ -530,9 +570,7 @@ class Index extends Component
                 }
             }
 
-            /*
-         * Validar unidad de medida.
-         */
+            /* Validar unidad de medida. */
             $unidad = UnidadMedida::findOrFail(
                 $this->unidadMedidaId
             );
@@ -552,17 +590,11 @@ class Index extends Component
                 }
             }
 
-            /*
-         * Comprobar préstamos pendientes.
-         */
+            /* Comprobar préstamos pendientes. */
             $cantidadPrestada = 0.0;
 
             if (! $esCreacion) {
-                /*
-            |--------------------------------------------------------------------------
-            | Impedir cambiar el tipo de control
-            |--------------------------------------------------------------------------
-            */
+
                 if ($this->tipoControl !== $herramienta->tipo_control) {
                     throw ValidationException::withMessages([
                         'tipoControl' =>
@@ -570,11 +602,7 @@ class Index extends Component
                     ]);
                 }
 
-                /*
-            |--------------------------------------------------------------------------
-            | Consultar las cantidades pendientes de devolución
-            |--------------------------------------------------------------------------
-            */
+                /* Consultar las cantidades pendientes de devolución */
                 $cantidadPrestada = (float) PrestamoDetalle::query()
                     ->where('herramienta_id', $herramienta->id)
                     ->where('estado', 'prestado')
@@ -584,9 +612,7 @@ class Index extends Component
                     ->value('pendiente');
 
 
-                /*
-             * No permitir desactivar herramientas prestadas.
-             */
+                /* No permitir desactivar herramientas prestadas. */
                 if (
                     $cantidadPrestada > 0
                     && ! $this->activoHerramienta
@@ -597,11 +623,7 @@ class Index extends Component
                     ]);
                 }
 
-                /*
-             * No permitir cambiar la unidad a una que
-             * no admite decimales si hay existencias
-             * o préstamos fraccionarios.
-             */
+                /* No permitir cambiar la unidad a una que no admite decimales si hay existencias o préstamos fraccionarios. */
                 if (
                     ! $unidad->permite_decimales
                     && (
@@ -619,11 +641,7 @@ class Index extends Component
                 }
             }
 
-            /*
-         * Datos generales.
-         * IMPORTANTE: cantidad_actual no se incluye
-         * al editar una herramienta.
-         */
+            /* Datos generales. IMPORTANTE: cantidad_actual no se incluye al editar una herramienta. */
             $datos = [
                 'nombre' => trim($this->nombre),
 
@@ -656,23 +674,14 @@ class Index extends Component
             ];
 
 
-            if ($esCreacion) {
 
-                /*
-    |--------------------------------------------------------------------------
-    | Crear herramienta
-    |--------------------------------------------------------------------------
-    */
+            if ($esCreacion) {
 
                 $datos['cantidad_actual'] = $cantidadInicial;
                 $datos['creado_por'] = Auth::id();
 
                 $herramienta = Herramienta::create($datos);
 
-                /*
-     * Registrar apertura inicial.
-     * Conservamos el funcionamiento anterior.
-     */
                 RegistrarAperturaInventario::registrar(
                     'herramienta',
                     $herramienta->id,
@@ -681,83 +690,23 @@ class Index extends Component
                         . $herramienta->nombre
                 );
 
-                /*
-    |--------------------------------------------------------------------------
-    | Auditoría de creación
-    |--------------------------------------------------------------------------
-    */
-
-                Auditoria::create([
-                    'modelo' => Herramienta::class,
-                    'registro_id' => $herramienta->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $herramienta->only([
-                        'nombre',
-                        'categoria_id',
-                        'marca_id',
-                        'unidad_medida_id',
-                        'tipo_control',
-                        'codigo_interno',
-                        'cantidad_actual',
-                        'stock_minimo',
-                        'observaciones',
-                        'activo',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($herramienta, [
+                    'nombre',
+                    'categoria_id',
+                    'marca_id',
+                    'unidad_medida_id',
+                    'tipo_control',
+                    'codigo_interno',
+                    'cantidad_actual',
+                    'stock_minimo',
+                    'observaciones',
+                    'activo',
                 ]);
             } else {
 
-                /*
-    |--------------------------------------------------------------------------
-    | Auditoría de modificación
-    |--------------------------------------------------------------------------
-    |
-    | fill() prepara los nuevos datos sin guardarlos.
-    | getDirty() identifica los campos que cambiaron.
-    |
-    */
-
                 $herramienta->fill($datos);
 
-                $valoresNuevos = $herramienta->getDirty();
-
-                /*
-     * Solamente registrar si realmente hay cambios.
-     */
-                if (! empty($valoresNuevos)) {
-
-                    /*
-         * Obtener los valores anteriores de los
-         * campos que efectivamente cambiaron.
-         */
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-
-                        $valoresAnteriores[$campo] =
-                            $herramienta->getRawOriginal($campo);
-                    }
-
-                    /*
-         * Guardar los cambios administrativos.
-         * No se modifica cantidad_actual.
-         */
-                    $herramienta->save();
-
-                    /*
-         * Registrar la auditoría dentro de la misma
-         * transacción que actualiza la herramienta.
-         */
-                    Auditoria::create([
-                        'modelo' => Herramienta::class,
-                        'registro_id' => $herramienta->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($herramienta);
             }
         }, 3);
 
@@ -779,12 +728,6 @@ class Index extends Component
     {
         DB::transaction(function () use ($id) {
 
-            /*
-        |--------------------------------------------------------------------------
-        | Bloquear la herramienta
-        |--------------------------------------------------------------------------
-        */
-
             $herramienta = Herramienta::query()
                 ->whereKey($id)
                 ->lockForUpdate()
@@ -793,12 +736,6 @@ class Index extends Component
             $estadoAnterior = (bool) $herramienta->activo;
 
             $nuevoEstado = ! $estadoAnterior;
-
-            /*
-        |--------------------------------------------------------------------------
-        | Validar préstamos pendientes
-        |--------------------------------------------------------------------------
-        */
 
             if (! $nuevoEstado) {
 
@@ -821,47 +758,15 @@ class Index extends Component
                 }
             }
 
-            /*
-        |--------------------------------------------------------------------------
-        | Actualizar estado
-        |--------------------------------------------------------------------------
-        */
-
             $herramienta->update([
                 'activo' => $nuevoEstado,
             ]);
 
-            /*
-        |--------------------------------------------------------------------------
-        | Registrar auditoría del cambio de estado
-        |--------------------------------------------------------------------------
-        */
-
-            Auditoria::create([
-                'modelo' => Herramienta::class,
-
-                'registro_id' => $herramienta->id,
-
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-
-                'usuario_id' => Auth::id(),
-            ]);
-
-            /*
-        |--------------------------------------------------------------------------
-        | Mensaje de confirmación
-        |--------------------------------------------------------------------------
-        */
+            RegistrarAuditoria::cambioEstado(
+                $herramienta,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             session()->flash(
                 'mensaje',
