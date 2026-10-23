@@ -3,7 +3,7 @@
 namespace App\Livewire\Catalogos\Departamentos;
 
 use App\Models\Departamento;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -183,55 +183,20 @@ class Index extends Component
 
             /* Crear departamento */
 
+
             if ($esCreacion) {
-
                 $datos['creado_por'] = Auth::id();
-
                 $departamento = Departamento::create($datos);
-
-                Auditoria::create([
-                    'modelo' => Departamento::class,
-                    'registro_id' => $departamento->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $departamento->only([
-                        'nombre',
-                        'sigla',
-                        'activo',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($departamento, [
+                    'nombre',
+                    'sigla',
+                    'activo',
                 ]);
             } else {
-
-                /* Identificar los cambios reales */
-
                 $departamento->fill($datos);
-
-                $valoresNuevos = $departamento->getDirty();
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $departamento->getOriginal($campo);
-                    }
-
-                    /* Guardar las modificaciones. */
-                    $departamento->save();
-
-                    /* Registrar cambios en auditoría. */
-                    Auditoria::create([
-                        'modelo' => Departamento::class,
-                        'registro_id' => $departamento->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($departamento);
             }
+
 
             return true;
         }, 3);
@@ -261,6 +226,7 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
@@ -273,7 +239,6 @@ class Index extends Component
                 ->firstOrFail();
 
             $estadoAnterior = (bool) $departamento->activo;
-
             $nuevoEstado = ! $estadoAnterior;
 
             /* Actualizar estado */
@@ -282,26 +247,13 @@ class Index extends Component
                 'activo' => $nuevoEstado,
             ]);
 
-            /* Registrar auditoría del cambio de estado */
+            /* Registrar auditoría mediante el servicio */
 
-            Auditoria::create([
-                'modelo' => Departamento::class,
-                'registro_id' => $departamento->id,
-
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-
-                'usuario_id' => Auth::id(),
-            ]);
+            RegistrarAuditoria::cambioEstado(
+                $departamento,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             return $nuevoEstado;
         }, 3);
@@ -313,6 +265,7 @@ class Index extends Component
                 : 'Departamento desactivado correctamente.'
         );
     }
+
 
 
 
