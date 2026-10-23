@@ -7,7 +7,6 @@ use App\Models\Departamento;
 use App\Models\Equipo;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
-use App\Models\Auditoria;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -571,55 +570,21 @@ class Index extends Component
 
                 $equipo = Equipo::create($datos);
 
-                Auditoria::create([
-                    'modelo' => Equipo::class,
-                    'registro_id' => $equipo->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $equipo->only([
-                        'categoria_id',
-                        'tipo_equipo_id',
-                        'departamento_id',
-                        'marca_id',
-                        'modelo',
-                        'color',
-                        'numero_serie',
-                        'numero_inventario',
-                        'observaciones',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($equipo, [
+                    'categoria_id',
+                    'tipo_equipo_id',
+                    'departamento_id',
+                    'marca_id',
+                    'modelo',
+                    'color',
+                    'numero_serie',
+                    'numero_inventario',
+                    'observaciones',
                 ]);
             } else {
-
-                /* Detectar cambios administrativos */
-
+                
                 $equipo->fill($datos);
-
-                $valoresNuevos = $equipo->getDirty();
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $equipo->getOriginal($campo);
-                    }
-
-                    /* Guardar el equipo */
-
-                    $equipo->save();
-
-                    /* Registrar únicamente los campos modificados */
-                    Auditoria::create([
-                        'modelo' => Equipo::class,
-                        'registro_id' => $equipo->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($equipo);
             }
         }, 3);
 
