@@ -3,7 +3,7 @@
 namespace App\Livewire\Catalogos\TiposEquipo;
 
 use App\Models\TipoEquipo;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -163,53 +163,18 @@ class Index extends Component
 
             /* Crear tipo de equipo */
 
+
             if ($esCreacion) {
-
                 $datos['creado_por'] = Auth::id();
-
                 $tipoEquipo = TipoEquipo::create($datos);
-
-                Auditoria::create([
-                    'modelo' => TipoEquipo::class,
-                    'registro_id' => $tipoEquipo->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $tipoEquipo->only([
-                        'nombre',
-                        'activo',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($tipoEquipo, [
+                    'nombre',
+                    'activo',
                 ]);
             } else {
-
-                /* Registrar solamente cambios reales */
-
                 $tipoEquipo->fill($datos);
-
-                $valoresNuevos = $tipoEquipo->getDirty();
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $tipoEquipo->getOriginal($campo);
-                    }
-
-                    $tipoEquipo->save();
-
-                    Auditoria::create([
-                        'modelo' => TipoEquipo::class,
-                        'registro_id' => $tipoEquipo->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($tipoEquipo);
             }
-
             return true;
         }, 3);
 
@@ -239,9 +204,12 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
+
+            /* Obtener y bloquear el registro. */
 
             $tipoEquipo = TipoEquipo::query()
                 ->whereKey($id)
@@ -252,25 +220,18 @@ class Index extends Component
             $nuevoEstado = ! $estadoAnterior;
 
             /* Actualizar estado. */
+
             $tipoEquipo->update([
                 'activo' => $nuevoEstado,
             ]);
 
-            /* Registrar auditoría del cambio. */
-            Auditoria::create([
-                'modelo' => TipoEquipo::class,
-                'registro_id' => $tipoEquipo->id,
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-                'usuario_id' => Auth::id(),
-            ]);
+            /* Registrar auditoría mediante el servicio. */
+
+            RegistrarAuditoria::cambioEstado(
+                $tipoEquipo,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             return $nuevoEstado;
         }, 3);
@@ -282,6 +243,7 @@ class Index extends Component
                 : 'Tipo de equipo desactivado correctamente.'
         );
     }
+
 
 
 
