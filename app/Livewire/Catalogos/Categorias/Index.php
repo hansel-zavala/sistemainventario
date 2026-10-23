@@ -3,7 +3,7 @@
 namespace App\Livewire\Catalogos\Categorias;
 
 use App\Models\Categoria;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -188,57 +188,22 @@ class Index extends Component
 
             /* Registrar nueva categoría */
 
+
             if ($esCreacion) {
 
                 $datos['creado_por'] = Auth::id();
-
+                
                 $categoria = Categoria::create($datos);
-
-                Auditoria::create([
-                    'modelo' => Categoria::class,
-                    'registro_id' => $categoria->id,
-                    'accion' => 'creacion',
-
-                    'valores_anteriores' => null,
-
-                    'valores_nuevos' => $categoria->only([
-                        'nombre',
-                        'aplica_a',
-                        'activo',
-                    ]),
-
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($categoria, [
+                    'nombre',
+                    'aplica_a',
+                    'activo',
                 ]);
             } else {
-
-                /* Detectar cambios reales */
-
                 $categoria->fill($datos);
-
-                $valoresNuevos = $categoria->getDirty();
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $categoria->getOriginal($campo);
-                    }
-
-                    $categoria->save();
-
-                    /* Guardar los cambios en auditoría */
-                    Auditoria::create([
-                        'modelo' => Categoria::class,
-                        'registro_id' => $categoria->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($categoria);
             }
+
 
             return true;
         }, 3);
@@ -269,47 +234,31 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
 
-            /* Obtener y bloquear la categoría */
-
+            /* Obtener y bloquear la categoría. */
             $categoria = Categoria::query()
                 ->whereKey($id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             $estadoAnterior = (bool) $categoria->activo;
-
             $nuevoEstado = ! $estadoAnterior;
 
-            /* Actualizar estado */
-
+            /* Actualizar el estado. */
             $categoria->update([
                 'activo' => $nuevoEstado,
             ]);
 
-            /* Registrar auditoría */
-
-            Auditoria::create([
-                'modelo' => Categoria::class,
-                'registro_id' => $categoria->id,
-
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-
-                'usuario_id' => Auth::id(),
-            ]);
+            /* Registrar el cambio mediante el servicio. */
+            RegistrarAuditoria::cambioEstado(
+                $categoria,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             return $nuevoEstado;
         }, 3);
@@ -321,6 +270,7 @@ class Index extends Component
                 : 'Categoría desactivada correctamente.'
         );
     }
+
 
 
     public function render()
