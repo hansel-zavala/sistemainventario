@@ -6,7 +6,7 @@ use App\Models\Marca;
 use App\Models\Tinta;
 use App\Models\MovimientoInventarioDetalle;
 use App\Models\RecargaTintaDetalle;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -358,9 +358,8 @@ class Index extends Component
             /* Crear una nueva tinta */
 
 
-            if ($esCreacion) {
 
-                /*  Crear tinta y registrar apertura inicial */
+            if ($esCreacion) {
 
                 $datos['botellas_completas'] = $botellasIniciales;
                 $datos['porcentaje_botella_abierta'] = $porcentajeInicial;
@@ -384,58 +383,21 @@ class Index extends Component
                         . '%'
                 );
 
-                /* Auditoría de creación */
-
-                Auditoria::create([
-                    'modelo' => Tinta::class,
-                    'registro_id' => $tinta->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $tinta->only([
-                        'nombre',
-                        'marca_id',
-                        'color',
-                        'presentacion',
-                        'botellas_completas',
-                        'porcentaje_botella_abierta',
-                        'stock_minimo_botellas',
-                        'observaciones',
-                        'activo',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($tinta, [
+                    'nombre',
+                    'marca_id',
+                    'color',
+                    'presentacion',
+                    'botellas_completas',
+                    'porcentaje_botella_abierta',
+                    'stock_minimo_botellas',
+                    'observaciones',
+                    'activo',
                 ]);
             } else {
-
-                /* Identificar cambios administrativos*/
-
                 $tinta->fill($datos);
 
-                $valoresNuevos = $tinta->getDirty();
-
-                /* No registrar actualizaciones sin cambios. */
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $tinta->getOriginal($campo);
-                    }
-
-                    /* Actualizar exclusivamente los datos generales.*/
-                    $tinta->save();
-
-                    /* Registrar los valores anteriores y nuevos.*/
-                    Auditoria::create([
-                        'modelo' => Tinta::class,
-                        'registro_id' => $tinta->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($tinta);
             }
         }, 3);
 
@@ -476,24 +438,11 @@ class Index extends Component
 
             /* Registrar auditoría de estado */
 
-            Auditoria::create([
-                'modelo' => Tinta::class,
-                'registro_id' => $tinta->id,
-
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-
-                'usuario_id' => Auth::id(),
-            ]);
+            RegistrarAuditoria::cambioEstado(
+                $tinta,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             return $nuevoEstado;
         }, 3);
