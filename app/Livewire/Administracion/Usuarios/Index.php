@@ -3,7 +3,10 @@
 namespace App\Livewire\Administracion\Usuarios;
 
 use App\Models\User;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -163,6 +166,7 @@ class Index extends Component
         ];
     }
 
+
     public function guardarUsuario(): void
     {
         $this->validate(
@@ -172,41 +176,65 @@ class Index extends Component
             )
         );
 
-        if ($this->usuarioId === null) {
+        $esCreacion = $this->usuarioId === null;
 
-            $usuario = User::create([
-                'name' => trim($this->name),
-                'email' => strtolower(trim($this->email)),
-                'password' => $this->password,
-                'activo' => $this->activoUsuario,
-            ]);
+        DB::transaction(function () use ($esCreacion) {
 
-            $usuario->assignRole($this->rolUsuario);
+            /* Crear usuario */
 
-            session()->flash(
-                'mensaje',
-                'Usuario creado correctamente.'
-            );
+            if ($esCreacion) {
 
-        } else {
+                $usuario = User::create([
+                    'name' => trim($this->name),
+                    'email' => strtolower(trim($this->email)),
+                    'password' => $this->password,
+                    'activo' => $this->activoUsuario,
+                ]);
 
-            $usuario = User::findOrFail($this->usuarioId);
+                $usuario->assignRole($this->rolUsuario);
 
-            // Evitar que el usuario se desactive a sí mismo
-            if (
-                $usuario->id === Auth::id()
-                && ! $this->activoUsuario
-            ) {
-                $this->addError(
-                    'activoUsuario',
-                    'No puede desactivar su propio usuario.'
+                /* Registrar creación sin incluir contraseña. */
+                RegistrarAuditoria::creacion($usuario, [
+                    'name',
+                    'email',
+                    'activo',
+                ]);
+
+                /* Registrar asignación inicial del rol. */
+                RegistrarAuditoria::cambioRol(
+                    $usuario,
+                    'Sin rol',
+                    $this->rolUsuario
                 );
 
                 return;
             }
 
-            // Evitar dejar el sistema sin Administradores activos
-            if ($usuario->hasRole('Administrador')) {
+            /* Obtener y bloquear usuario durante la edición */
+
+            $usuario = User::query()
+                ->whereKey($this->usuarioId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $rolAnterior = $usuario->getRoleNames()->first()
+                ?? 'Sin rol';
+
+            /* Impedir autodesactivación */
+
+            if (
+                $usuario->id === Auth::id()
+                && ! $this->activoUsuario
+            ) {
+                throw ValidationException::withMessages([
+                    'activoUsuario' =>
+                    'No puede desactivar su propio usuario.',
+                ]);
+            }
+
+            /* Proteger al último Administrador activo */
+
+            if ($rolAnterior === 'Administrador') {
 
                 $quitaraRolAdministrador =
                     $this->rolUsuario !== 'Administrador';
@@ -225,42 +253,61 @@ class Index extends Component
                         ->count();
 
                     if ($otrosAdministradoresActivos === 0) {
-                        $this->addError(
-                            'rolUsuario',
-                            'Debe existir al menos un Administrador activo en el sistema.'
-                        );
-
-                        return;
+                        throw ValidationException::withMessages([
+                            'rolUsuario' =>
+                            'Debe existir al menos un Administrador activo en el sistema.',
+                        ]);
                     }
                 }
             }
 
-            // Actualizar datos
-            $usuario->name = trim($this->name);
-            $usuario->email = strtolower(trim($this->email));
-            $usuario->activo = $this->activoUsuario;
+            /* Actualizar únicamente datos administrativos */
 
-            if ($this->password !== '') {
-                $usuario->password = $this->password;
-            }
-
-            $usuario->save();
-
-            // Actualizar rol
-            $usuario->syncRoles([
-                $this->rolUsuario,
+            $usuario->fill([
+                'name' => trim($this->name),
+                'email' => strtolower(trim($this->email)),
+                'activo' => $this->activoUsuario,
             ]);
 
-            session()->flash(
-                'mensaje',
-                'Usuario actualizado correctamente.'
-            );
-        }
+            RegistrarAuditoria::guardarActualizacion($usuario);
+
+            /* Actualizar rol cuando haya cambiado */
+
+            if ($rolAnterior !== $this->rolUsuario) {
+
+                $usuario->syncRoles([
+                    $this->rolUsuario,
+                ]);
+
+                RegistrarAuditoria::cambioRol(
+                    $usuario,
+                    $rolAnterior,
+                    $this->rolUsuario
+                );
+            }
+
+            /* Cambiar contraseña si se proporcionó una nueva */
+
+            if ($this->password !== '') {
+
+                $usuario->password = $this->password;
+                $usuario->save();
+
+                RegistrarAuditoria::cambioContrasena($usuario);
+            }
+        }, 3);
+
+        session()->flash(
+            'mensaje',
+            $esCreacion
+                ? 'Usuario creado correctamente.'
+                : 'Usuario actualizado correctamente.'
+        );
 
         $this->cerrarModal();
-
         $this->resetPage();
     }
+
 
     public function render()
     {

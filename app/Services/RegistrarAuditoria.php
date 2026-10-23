@@ -83,6 +83,39 @@ class RegistrarAuditoria
         );
     }
 
+    /* Registrar cambio de rol */
+
+    public static function cambioRol(
+        Model $modelo,
+        string $rolAnterior,
+        string $rolNuevo
+    ): void {
+        if ($rolAnterior === $rolNuevo) {
+            return;
+        }
+
+        self::registrar(
+            $modelo,
+            'cambio_rol',
+            ['rol' => $rolAnterior],
+            ['rol' => $rolNuevo]
+        );
+    }
+
+    /* Registrar cambio de contraseña sin exponer datos sensibles */
+
+    public static function cambioContrasena(
+        Model $modelo
+    ): void {
+        self::registrar(
+            $modelo,
+            'cambio_contrasena',
+            null,
+            ['contrasena_modificada' => true]
+        );
+    }
+
+
     /* Método central de auditoría */
 
     private static function registrar(
