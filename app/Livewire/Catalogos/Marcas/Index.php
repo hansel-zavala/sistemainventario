@@ -3,7 +3,7 @@
 namespace App\Livewire\Catalogos\Marcas;
 
 use App\Models\Marca;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -166,16 +166,9 @@ class Index extends Component
 
                 $marca = Marca::create($datos);
 
-                Auditoria::create([
-                    'modelo' => Marca::class,
-                    'registro_id' => $marca->id,
-                    'accion' => 'creacion',
-                    'valores_anteriores' => null,
-                    'valores_nuevos' => $marca->only([
-                        'nombre',
-                        'activo',
-                    ]),
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($marca, [
+                    'nombre',
+                    'activo',
                 ]);
             } else {
 
@@ -183,28 +176,7 @@ class Index extends Component
 
                 $marca->fill($datos);
 
-                $valoresNuevos = $marca->getDirty();
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-                        $valoresAnteriores[$campo] =
-                            $marca->getOriginal($campo);
-                    }
-
-                    $marca->save();
-
-                    Auditoria::create([
-                        'modelo' => Marca::class,
-                        'registro_id' => $marca->id,
-                        'accion' => 'actualizacion',
-                        'valores_anteriores' => $valoresAnteriores,
-                        'valores_nuevos' => $valoresNuevos,
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($marca);
             }
 
             return true;
@@ -235,6 +207,7 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
@@ -247,26 +220,15 @@ class Index extends Component
             $estadoAnterior = (bool) $marca->activo;
             $nuevoEstado = ! $estadoAnterior;
 
-            /* Actualizar el estado de la marca. */
             $marca->update([
                 'activo' => $nuevoEstado,
             ]);
 
-            /* Registrar la operación en auditoría. */
-            Auditoria::create([
-                'modelo' => Marca::class,
-                'registro_id' => $marca->id,
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-                'usuario_id' => Auth::id(),
-            ]);
+            RegistrarAuditoria::cambioEstado(
+                $marca,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
             return $nuevoEstado;
         }, 3);
@@ -278,6 +240,7 @@ class Index extends Component
                 : 'Marca desactivada correctamente.'
         );
     }
+
 
 
 
