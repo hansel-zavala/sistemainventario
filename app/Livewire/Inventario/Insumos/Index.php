@@ -7,7 +7,7 @@ use App\Models\Insumo;
 use App\Models\Marca;
 use App\Models\UnidadMedida;
 use App\Models\MovimientoInventario;
-use App\Models\Auditoria;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -255,12 +255,24 @@ class Index extends Component
                 return;
             }
 
-            $categoria = Categoria::create([
-                'nombre' => $nombre,
-                'aplica_a' => 'insumo',
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+
+            $categoria = DB::transaction(function () use ($nombre) {
+
+                $categoria = Categoria::create([
+                    'nombre' => $nombre,
+                    'aplica_a' => 'insumo',
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($categoria, [
+                    'nombre',
+                    'aplica_a',
+                    'activo',
+                ]);
+
+                return $categoria;
+            }, 3);
 
             $this->categoriaId = (string) $categoria->id;
         }
@@ -284,11 +296,22 @@ class Index extends Component
                 return;
             }
 
-            $marca = Marca::create([
-                'nombre' => $nombre,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+
+            $marca = DB::transaction(function () use ($nombre) {
+
+                $marca = Marca::create([
+                    'nombre' => $nombre,
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($marca, [
+                    'nombre',
+                    'activo',
+                ]);
+
+                return $marca;
+            }, 3);
 
             $this->marcaId = (string) $marca->id;
         }
@@ -332,14 +355,37 @@ class Index extends Component
                 return;
             }
 
-            $unidad = UnidadMedida::create([
-                'nombre_singular' => $singular,
-                'nombre_plural' => $plural,
-                'abreviatura' => $abreviatura !== '' ? $abreviatura : null,
-                'permite_decimales' => $this->nuevoPermiteDecimalesUnidad,
-                'activo' => true,
-                'creado_por' => Auth::id(),
-            ]);
+            $unidad = DB::transaction(function () use (
+                $singular,
+                $plural,
+                $abreviatura
+            ) {
+
+                $unidad = UnidadMedida::create([
+                    'nombre_singular' => $singular,
+                    'nombre_plural' => $plural,
+
+                    'abreviatura' => $abreviatura !== ''
+                        ? $abreviatura
+                        : null,
+
+                    'permite_decimales' =>
+                    $this->nuevoPermiteDecimalesUnidad,
+
+                    'activo' => true,
+                    'creado_por' => Auth::id(),
+                ]);
+
+                RegistrarAuditoria::creacion($unidad, [
+                    'nombre_singular',
+                    'nombre_plural',
+                    'abreviatura',
+                    'permite_decimales',
+                    'activo',
+                ]);
+
+                return $unidad;
+            }, 3);
 
             $this->unidadMedidaId = (string) $unidad->id;
         }
@@ -552,15 +598,13 @@ class Index extends Component
 
             /* Crear insumo */
 
+
             if ($esCreacion) {
 
                 $datos['cantidad_actual'] = $cantidadInicial;
-
                 $datos['creado_por'] = Auth::id();
 
                 $insumo = Insumo::create($datos);
-
-                /* Registrar apertura inicial */
 
                 RegistrarAperturaInventario::registrar(
                     'insumo',
@@ -569,69 +613,22 @@ class Index extends Component
                     'Apertura inicial del insumo: ' . $insumo->nombre
                 );
 
-                /* Registrar auditoría de creación */
 
-                Auditoria::create([
-                    'modelo' => Insumo::class,
-
-                    'registro_id' => $insumo->id,
-
-                    'accion' => 'creacion',
-
-                    'valores_anteriores' => null,
-
-                    'valores_nuevos' => $insumo->only([
-                        'nombre',
-                        'categoria_id',
-                        'marca_id',
-                        'unidad_medida_id',
-                        'cantidad_actual',
-                        'stock_minimo',
-                        'observaciones',
-                        'activo',
-                    ]),
-
-                    'usuario_id' => Auth::id(),
+                RegistrarAuditoria::creacion($insumo, [
+                    'nombre',
+                    'categoria_id',
+                    'marca_id',
+                    'unidad_medida_id',
+                    'cantidad_actual',
+                    'stock_minimo',
+                    'observaciones',
+                    'activo',
                 ]);
             } else {
 
-                /* Preparar los cambios administrativos */
-
                 $insumo->fill($datos);
 
-                $valoresNuevos = $insumo->getDirty();
-
-                /* Guardar solamente si hay cambios */
-
-                if (! empty($valoresNuevos)) {
-
-                    $valoresAnteriores = [];
-
-                    foreach ($valoresNuevos as $campo => $valor) {
-
-                        $valoresAnteriores[$campo] =
-                            $insumo->getOriginal($campo);
-                    }
-
-                    /* Guardar los datos actualizados. */
-                    $insumo->save();
-
-                    /* Registrar auditoría de modificación */
-
-                    Auditoria::create([
-                        'modelo' => Insumo::class,
-
-                        'registro_id' => $insumo->id,
-
-                        'accion' => 'actualizacion',
-
-                        'valores_anteriores' => $valoresAnteriores,
-
-                        'valores_nuevos' => $valoresNuevos,
-
-                        'usuario_id' => Auth::id(),
-                    ]);
-                }
+                RegistrarAuditoria::guardarActualizacion($insumo);
             }
         }, 3);
 
@@ -649,54 +646,34 @@ class Index extends Component
 
 
 
+
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
 
-            /* Obtener y bloquear el insumo */
-
+            /* Obtener y bloquear el insumo. */
             $insumo = Insumo::query()
                 ->whereKey($id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            /* Identificar los estados */
-
             $estadoAnterior = (bool) $insumo->activo;
-
             $nuevoEstado = ! $estadoAnterior;
 
-            /* Actualizar el estado del insumo */
-
+            /* Actualizar estado. */
             $insumo->update([
                 'activo' => $nuevoEstado,
             ]);
 
-            /* Registrar la auditoría */
+            /* Registrar mediante el servicio compartido. */
+            RegistrarAuditoria::cambioEstado(
+                $insumo,
+                $estadoAnterior,
+                $nuevoEstado
+            );
 
-            Auditoria::create([
-                'modelo' => Insumo::class,
-
-                'registro_id' => $insumo->id,
-
-                'accion' => $nuevoEstado
-                    ? 'activacion'
-                    : 'desactivacion',
-
-                'valores_anteriores' => [
-                    'activo' => $estadoAnterior,
-                ],
-
-                'valores_nuevos' => [
-                    'activo' => $nuevoEstado,
-                ],
-
-                'usuario_id' => Auth::id(),
-            ]);
             return $nuevoEstado;
         }, 3);
-
-        /* Mensaje de confirmación */
 
         session()->flash(
             'mensaje',
@@ -705,6 +682,7 @@ class Index extends Component
                 : 'Insumo desactivado correctamente.'
         );
     }
+
 
 
 
