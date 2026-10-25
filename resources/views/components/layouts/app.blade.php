@@ -6,8 +6,7 @@
 
     <meta
         name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+        content="width=device-width, initial-scale=1.0">
 
     <title>
         {{ $title ?? 'Sistema de Inventario' }}
@@ -40,8 +39,7 @@
 
                 <a
                     href="{{ route('dashboard') }}"
-                    class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                >
+                    class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                     Dashboard
                 </a>
 
@@ -53,36 +51,31 @@
 
                     <a
                         href="{{ route('inventario.equipos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Equipos tecnológicos
                     </a>
 
                     <a
                         href="{{ route('inventario.herramientas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Herramientas
                     </a>
 
                     <a
                         href="{{ route('inventario.insumos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Insumos
                     </a>
 
                     <a
                         href="{{ route('inventario.tintas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Tinta
                     </a>
 
                     <a
                         href="{{ route('inventario.tintas.recargas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Recargas de tinta
                     </a>
 
@@ -96,29 +89,25 @@
 
                     <a
                         href="{{ route('movimientos.entradas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Entradas
                     </a>
 
                     <a
                         href="{{ route('movimientos.salidas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Salidas
                     </a>
 
                     <a
                         href="{{ route('movimientos.prestamos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Préstamos
                     </a>
 
                     <a
                         href="{{ route('movimientos.devoluciones') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Devoluciones
                     </a>
 
@@ -132,36 +121,31 @@
 
                     <a
                         href="{{ route('catalogos.categorias') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Categorías
                     </a>
 
                     <a
                         href="{{ route('catalogos.tipos-equipo') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Tipos de equipo
                     </a>
 
                     <a
                         href="{{ route('catalogos.marcas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Marcas
                     </a>
 
                     <a
                         href="{{ route('catalogos.departamentos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Departamentos
                     </a>
 
                     <a
                         href="{{ route('catalogos.unidades-medida') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                    >
+                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
                         Unidades de medida
                     </a>
 
@@ -181,8 +165,7 @@
                         {{ request()->routeIs('historial.movimientos')
                             ? 'bg-gray-800 text-white font-medium'
                             : ''
-                        }}"
-                    >
+                        }}">
                         Historial de movimientos
                     </a>
 
@@ -190,20 +173,37 @@
 
 
                 @role('Administrador')
+
                     <div class="pt-3">
 
                         <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                             Administración
                         </p>
 
+                        {{-- Usuarios --}}
                         <a
                             href="{{ route('administracion.usuarios') }}"
-                            class="block rounded-lg px-4 py-2 hover:bg-gray-800"
-                        >
+                            class="block rounded-lg px-4 py-2 hover:bg-gray-800
+                            {{ request()->routeIs('administracion.usuarios')
+                                ? 'bg-gray-800 text-white font-medium'
+                                : ''
+                            }}">
                             Usuarios
                         </a>
 
+                        {{-- Auditoría del sistema --}}
+                        <a
+                            href="{{ route('administracion.auditorias') }}"
+                            class="block rounded-lg px-4 py-2 hover:bg-gray-800
+                            {{ request()->routeIs('administracion.auditorias')
+                                ? 'bg-gray-800 text-white font-medium'
+                                : ''
+                            }}">
+                            Auditoría del sistema
+                        </a>
+
                     </div>
+
                 @endrole
 
             </nav>
@@ -231,14 +231,12 @@
 
                     <form
                         method="POST"
-                        action="{{ route('logout') }}"
-                    >
+                        action="{{ route('logout') }}">
                         @csrf
 
                         <button
                             type="submit"
-                            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-                        >
+                            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
                             Cerrar sesión
                         </button>
 
@@ -261,4 +259,5 @@
 
     @livewireScripts
 </body>
+
 </html>

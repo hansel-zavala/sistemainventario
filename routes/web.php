@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
+use App\Livewire\Administracion\Auditorias\Index as AuditoriasIndex;
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
 use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
 use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
@@ -39,10 +40,16 @@ Route::middleware('auth')->group(function () {
     })->name('dashboard');
 
     Route::middleware('role:Administrador')->group(function () {
+
         Route::get(
             '/administracion/usuarios',
             UsuariosIndex::class
         )->name('administracion.usuarios');
+
+        Route::get(
+            '/administracion/auditorias',
+            AuditoriasIndex::class
+        )->name('administracion.auditorias');
     });
 
     Route::get(
