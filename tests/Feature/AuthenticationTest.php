@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PasswordChanged;
 use App\Mail\PasswordRecoveryCode;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -52,8 +54,11 @@ class AuthenticationTest extends TestCase
 
         Auth::forgetGuards();
         $this->travel(1)->hours();
-        $this->get(route('dashboard'))->assertRedirect(route('login'));
+        $this->get(route('dashboard'))->assertRedirect(route('login'))
+            ->assertSessionHas('auth_notice', 'Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
         $this->assertGuest();
+        $this->get(route('login'))->assertOk()->assertSee('Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
+        $this->get(route('login'))->assertDontSee('Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
     }
 
     public function test_a_session_without_remember_also_cannot_exceed_the_workday(): void
@@ -89,19 +94,34 @@ class AuthenticationTest extends TestCase
         $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password', 'remember' => 'on']);
         $user->update(['activo' => false]);
         Auth::forgetGuards();
-        $this->get(route('dashboard'))->assertRedirect(route('login'));
+        $this->get(route('dashboard'))->assertRedirect(route('login'))
+            ->assertSessionHas('auth_notice', 'Tu cuenta está inactiva. Contacta al Departamento de Informática.');
         $this->assertGuest();
     }
 
     public function test_wrong_credentials_preserve_remember_and_login_is_rate_limited(): void
     {
+        $this->freezeTime();
         $user = User::factory()->create();
         for ($attempt = 0; $attempt < 5; $attempt++) {
             $this->post(route('login.store'), ['email' => $user->email, 'password' => 'incorrect', 'remember' => 'on'])
                 ->assertSessionHasErrors('email')->assertSessionHas('_old_input.remember', 'on');
         }
-        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])->assertTooManyRequests();
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password', 'remember' => 'on'])
+            ->assertRedirect(route('login'))->assertHeader('Retry-After', '60')
+            ->assertSessionHasErrors(['throttle' => 'Has realizado demasiados intentos. Espera 60 segundos antes de volver a intentarlo.'])
+            ->assertSessionHas('_old_input.email', $user->email)
+            ->assertSessionHas('_old_input.remember', true)
+            ->assertSessionMissing('_old_input.password');
         $this->assertGuest();
+        $this->withCookie(config('session.cookie'), session()->getId())
+            ->get(route('login'))->assertSee('Has realizado demasiados intentos.');
+        $this->travel(20)->seconds();
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect(route('login'))->assertHeader('Retry-After', '40');
+        $this->travel(41)->seconds();
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_inactive_users_cannot_login(): void
@@ -130,6 +150,7 @@ class AuthenticationTest extends TestCase
         ])->assertRedirect(route('login'))->assertSessionHas('status');
 
         $this->assertTrue(Hash::check('NuevaClave123!', $user->fresh()->password));
+        Mail::assertSent(PasswordChanged::class, fn (PasswordChanged $mail) => $mail->hasTo($user->email));
         $this->assertNotSame($oldToken, $user->fresh()->remember_token);
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
         $this->assertGuest();
@@ -138,6 +159,7 @@ class AuthenticationTest extends TestCase
             'password' => 'OtraClave123!', 'password_confirmation' => 'OtraClave123!',
         ])->assertRedirect(route('password.request'))->assertSessionHasErrors('code');
         $this->assertTrue(Hash::check('NuevaClave123!', $user->fresh()->password));
+        Mail::assertSent(PasswordChanged::class, 1);
     }
 
     #[TestWith([false])]
@@ -197,6 +219,7 @@ class AuthenticationTest extends TestCase
             'email' => $user->email, 'password' => 'NuevaClave123!', 'password_confirmation' => 'NuevaClave123!',
         ])->assertRedirect(route('password.request'));
         $this->assertTrue(Hash::check('password', $user->fresh()->password));
+        Mail::assertNotSent(PasswordChanged::class);
     }
 
     public function test_verified_permission_expires_and_cannot_be_used_in_another_session(): void
@@ -228,6 +251,7 @@ class AuthenticationTest extends TestCase
         $this->post(route('password.update'), ['password' => $password, 'password_confirmation' => $confirmation])
             ->assertSessionHasErrors(['password' => $error]);
         $this->assertTrue(Hash::check('password', $user->fresh()->password));
+        Mail::assertNotSent(PasswordChanged::class);
     }
 
     public function test_reset_revokes_an_existing_session_and_remember_cookie(): void
@@ -244,7 +268,8 @@ class AuthenticationTest extends TestCase
         $this->post(route('password.verify'), ['code' => $code]);
         $this->post(route('password.update'), ['password' => 'NuevaClave123!', 'password_confirmation' => 'NuevaClave123!']);
         Auth::forgetGuards();
-        $this->withSession($oldSession)->get(route('dashboard'))->assertRedirect(route('login'));
+        $this->withSession($oldSession)->get(route('dashboard'))->assertRedirect(route('login'))
+            ->assertSessionHas('auth_notice', 'Tu contraseña cambió. Inicia sesión nuevamente con tu nueva contraseña.');
         $this->app['session']->flush();
         Auth::forgetGuards();
         $this->withCookies($cookies)->get(route('dashboard'))->assertRedirect(route('login'));
@@ -438,5 +463,121 @@ class AuthenticationTest extends TestCase
             ->assertSessionHas('password_recovery.email', 'another@example.com');
         $this->get(route('password.code'))->assertViewHas('resendSeconds', 50);
         Mail::assertNothingSent();
+    }
+
+    public function test_password_changed_mail_explains_the_change_and_how_to_report_it(): void
+    {
+        $mail = new PasswordChanged('28/10/2026 14:30 (America/Tegucigalpa)');
+        $mail->assertSeeInHtml('Tu contraseña fue actualizada');
+        $mail->assertSeeInText('28/10/2026 14:30 (America/Tegucigalpa)');
+        $mail->assertSeeInText('contacta de inmediato al Departamento de Informática');
+    }
+
+    public function test_notification_failure_does_not_undo_password_reset(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create(['activo' => true]);
+        $oldToken = $user->remember_token;
+        $code = $this->requestCode($user);
+        $this->post(route('password.verify'), ['code' => $code])->assertRedirect(route('password.reset'));
+
+        Exceptions::fake();
+        Mail::shouldReceive('to')->once()->with($user->email)->andReturnSelf();
+        Mail::shouldReceive('send')->once()->with(\Mockery::type(PasswordChanged::class))
+            ->andThrow(new RuntimeException('SMTP unavailable'));
+        $this->post(route('password.update'), ['password' => 'NuevaClave123!', 'password_confirmation' => 'NuevaClave123!'])
+            ->assertRedirect(route('login'))->assertSessionHas('status');
+
+        $this->assertTrue(Hash::check('NuevaClave123!', $user->fresh()->password));
+        $this->assertNotSame($oldToken, $user->fresh()->remember_token);
+        $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
+        $this->assertGuest();
+        Exceptions::assertReported(RuntimeException::class);
+    }
+
+    public function test_verification_rate_limit_keeps_the_form_and_does_not_retain_the_code(): void
+    {
+        $this->freezeTime();
+        Mail::fake();
+        $user = User::factory()->create(['activo' => true]);
+        $code = $this->requestCode($user);
+        $wrong = $code === '000000' ? '111111' : '000000';
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $this->from(route('password.code'))->post(route('password.verify'), ['code' => $wrong]);
+        }
+        $this->travel(10)->seconds();
+        $this->post(route('password.verify'), ['code' => $code])
+            ->assertRedirect(route('password.code'))->assertHeader('Retry-After', '50')
+            ->assertSessionHasErrors(['throttle' => 'Has realizado demasiados intentos. Espera 50 segundos antes de volver a intentarlo.'])
+            ->assertSessionMissing('_old_input.code');
+        $this->withCookie(config('session.cookie'), session()->getId())
+            ->get(route('password.code'))->assertOk()->assertSee('Espera 50 segundos');
+        Mail::assertSentCount(1);
+    }
+
+    public function test_password_update_rate_limit_preserves_the_permission_without_retaining_passwords(): void
+    {
+        $this->freezeTime();
+        Mail::fake();
+        $user = User::factory()->create(['activo' => true]);
+        $code = $this->requestCode($user);
+        $this->post(route('password.verify'), ['code' => $code]);
+        for ($attempt = 0; $attempt < 9; $attempt++) {
+            $this->from(route('password.reset'))->post(route('password.update'), ['password' => 'short']);
+        }
+        $this->post(route('password.update'), ['password' => 'NuevaClave123!', 'password_confirmation' => 'NuevaClave123!'])
+            ->assertRedirect(route('password.reset'))->assertSessionHasErrors('throttle')
+            ->assertSessionHas('password_recovery.grant')->assertSessionMissing('_old_input.password')
+            ->assertSessionMissing('_old_input.password_confirmation');
+        Mail::assertNotSent(PasswordChanged::class);
+        $this->travel(61)->seconds();
+        $this->post(route('password.update'), ['password' => 'NuevaClave123!', 'password_confirmation' => 'NuevaClave123!'])
+            ->assertRedirect(route('login'));
+        Mail::assertSent(PasswordChanged::class, 1);
+    }
+
+    #[TestWith(['login.store', 'login'])]
+    #[TestWith(['password.email', 'password.request'])]
+    #[TestWith(['password.verify', 'password.request'])]
+    #[TestWith(['password.update', 'password.request'])]
+    public function test_expired_form_redirects_to_a_fresh_form_with_a_message(string $action, string $destination): void
+    {
+        $this->app->instance(PreventRequestForgery::class, new class($this->app, $this->app['encrypter']) extends PreventRequestForgery
+        {
+            protected function runningUnitTests(): bool
+            {
+                return false;
+            }
+        });
+        $this->post(route($action), ['_token' => 'expired', 'password' => 'NeverStoreThis', 'code' => '123456'])
+            ->assertRedirect(route($destination))
+            ->assertSessionHasErrors(['session' => 'La sesión del formulario venció. Vuelve a intentarlo desde esta página.'])
+            ->assertSessionMissing('_old_input.password')->assertSessionMissing('_old_input.code');
+        $this->withCookie(config('session.cookie'), session()->getId())
+            ->get(route($destination))->assertOk()->assertSee('La sesión del formulario venció.');
+    }
+
+    public function test_session_expiration_on_a_post_request_has_the_workday_message(): void
+    {
+        $this->freezeTime();
+        $user = User::factory()->create(['activo' => true]);
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password']);
+        $this->travel(8)->hours();
+        Auth::forgetGuards();
+        $this->post(route('logout'))->assertRedirect(route('login'))
+            ->assertSessionHas('auth_notice', 'Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
+        $this->assertGuest();
+    }
+
+    public function test_login_ip_limit_shows_a_message_even_when_emails_change(): void
+    {
+        $this->freezeTime();
+        for ($attempt = 0; $attempt < 30; $attempt++) {
+            $this->post(route('login.store'), ['email' => "unknown{$attempt}@example.com", 'password' => 'incorrect']);
+        }
+        $this->post(route('login.store'), ['email' => 'another@example.com', 'password' => 'incorrect'])
+            ->assertRedirect(route('login'))->assertSessionHasErrors('throttle');
+        $this->postJson(route('login.store'), ['email' => 'another@example.com', 'password' => 'incorrect'])
+            ->assertTooManyRequests()->assertJsonPath('message', 'Has realizado demasiados intentos. Espera 60 segundos antes de volver a intentarlo.');
     }
 }

@@ -9,6 +9,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -32,4 +33,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->respond(function (Response $response, Throwable $exception, Request $request): Response {
+            if ($response->getStatusCode() !== 419 || $request->expectsJson()
+                || ! $request->routeIs('login.store', 'password.email', 'password.verify', 'password.update', 'logout')) {
+                return $response;
+            }
+
+            $route = $request->routeIs('password.*') ? 'password.request' : 'login';
+
+            return redirect()->route($route)->withErrors([
+                'session' => 'La sesión del formulario venció. Vuelve a intentarlo desde esta página.',
+            ]);
+        });
     })->create();

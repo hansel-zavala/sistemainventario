@@ -65,9 +65,9 @@
                     <div role="status" class="rounded-xl border border-[#BBCDC7] bg-white px-4 py-3 text-sm text-[#006D67]">{{ session('status') }}</div>
                     @endif
 
-                    @if ($errors->any())
+                    @if ($errors->any() || session('auth_notice'))
                     <div id="login-error" role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-800">
-                        {{ $errors->first() }}
+                        {{ $errors->first() ?: session('auth_notice') }}
                     </div>
                     @endif
 

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -25,8 +26,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         RateLimiter::for('login', fn (Request $request) => [
-            Limit::perMinute(30)->by('login-ip:'.$request->ip()),
-            Limit::perMinute(5)->by('login:'.$this->emailKey($request).'|'.$request->ip()),
+            Limit::perMinute(30)->by('login-ip:'.$request->ip())
+                ->response(fn (Request $request, array $headers) => $this->authenticationCooldownResponse($request, $headers)),
+            Limit::perMinute(5)->by('login:'.$this->emailKey($request).'|'.$request->ip())
+                ->response(fn (Request $request, array $headers) => $this->authenticationCooldownResponse($request, $headers)),
         ]);
         RateLimiter::for('recovery-send', fn (Request $request) => [
             Limit::perMinute(5)->by('recovery-ip:'.$request->ip())
@@ -34,7 +37,8 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(1)->by('recovery-email:'.$this->emailKey($request))
                 ->response(fn (Request $request, array $headers) => $this->recoveryCooldownResponse($request, $headers)),
         ]);
-        RateLimiter::for('recovery-verify', fn (Request $request) => Limit::perMinute(10)->by('recovery-verify:'.$request->ip()));
+        RateLimiter::for('recovery-verify', fn (Request $request) => Limit::perMinute(10)->by('recovery-verify:'.$request->ip())
+            ->response(fn (Request $request, array $headers) => $this->authenticationCooldownResponse($request, $headers)));
     }
 
     private function emailKey(Request $request): string
@@ -59,5 +63,31 @@ class AppServiceProvider extends ServiceProvider
 
         return redirect()->route('password.code')->withHeaders($headers)->with('status',
             'Espera antes de solicitar otro código. Si ya recibiste uno, puedes ingresarlo o esperar a que termine la cuenta regresiva.');
+    }
+
+    /** @param array<string, int|string> $headers */
+    private function authenticationCooldownResponse(Request $request, array $headers): RedirectResponse|JsonResponse
+    {
+        $seconds = (int) $headers['Retry-After'];
+        $message = "Has realizado demasiados intentos. Espera {$seconds} segundos antes de volver a intentarlo.";
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], 429, $headers);
+        }
+
+        if ($request->routeIs('login.store')) {
+            return redirect()->route('login')->withHeaders($headers)->withErrors(['throttle' => $message])->withInput([
+                'email' => is_string($request->input('email')) ? $request->input('email') : '',
+                'remember' => $request->boolean('remember'),
+            ]);
+        }
+
+        $route = $request->routeIs('password.update') ? 'password.reset' : 'password.code';
+
+        if (! $request->session()->has('password_recovery.email')) {
+            $route = 'password.request';
+        }
+
+        return redirect()->route($route)->withHeaders($headers)->withErrors(['throttle' => $message]);
     }
 }

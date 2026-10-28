@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\PasswordChanged;
 use App\Mail\PasswordRecoveryCode;
 use App\Models\User;
 use Illuminate\Auth\Events\PasswordReset;
@@ -121,6 +122,12 @@ class PasswordRecovery
         }
 
         event(new PasswordReset($user));
+
+        try {
+            Mail::to($user->email)->send(new PasswordChanged(now()->format('d/m/Y H:i').' ('.config('app.timezone').')'));
+        } catch (Throwable $exception) {
+            report($exception);
+        }
 
         return true;
     }
