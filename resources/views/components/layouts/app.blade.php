@@ -12,6 +12,8 @@
         {{ $title ?? 'Sistema de Inventario' }}
     </title>
 
+     <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.png') }}">
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     @livewireStyles

@@ -1,24 +1,25 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
-use Illuminate\Support\Facades\Route;
-use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
+use App\Http\Controllers\Auth\PasswordRecoveryController;
 use App\Livewire\Administracion\Auditorias\Index as AuditoriasIndex;
+use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
-use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
-use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
 use App\Livewire\Catalogos\Departamentos\Index as DepartamentosIndex;
+use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
+use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
 use App\Livewire\Catalogos\UnidadesMedida\Index as UnidadesMedidaIndex;
+use App\Livewire\Historial\Movimientos\Index as HistorialMovimientosIndex;
 use App\Livewire\Inventario\Equipos\Index as EquiposIndex;
 use App\Livewire\Inventario\Herramientas\Index as HerramientasIndex;
 use App\Livewire\Inventario\Insumos\Index as InsumosIndex;
 use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Livewire\Inventario\Tintas\Recargas\Index as RecargasTintaIndex;
-use App\Livewire\Movimientos\Entradas\Index as EntradasIndex;
-use App\Livewire\Movimientos\Salidas\Index as SalidasIndex;
-use App\Livewire\Movimientos\Prestamos\Index as PrestamosIndex;
 use App\Livewire\Movimientos\Devoluciones\Index as DevolucionesIndex;
-use App\Livewire\Historial\Movimientos\Index as HistorialMovimientosIndex;
+use App\Livewire\Movimientos\Entradas\Index as EntradasIndex;
+use App\Livewire\Movimientos\Prestamos\Index as PrestamosIndex;
+use App\Livewire\Movimientos\Salidas\Index as SalidasIndex;
+use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
 
@@ -26,7 +27,18 @@ Route::middleware('guest')->group(function () {
         ->name('login');
 
     Route::post('/login', [LoginController::class, 'store'])
+        ->middleware('throttle:login')
         ->name('login.store');
+
+    Route::get('/olvide-mi-contrasena', [PasswordRecoveryController::class, 'create'])->name('password.request');
+    Route::post('/olvide-mi-contrasena', [PasswordRecoveryController::class, 'send'])
+        ->middleware('throttle:recovery-send')->name('password.email');
+    Route::get('/recuperar-contrasena/codigo', [PasswordRecoveryController::class, 'code'])->name('password.code');
+    Route::post('/recuperar-contrasena/codigo', [PasswordRecoveryController::class, 'verify'])
+        ->middleware('throttle:recovery-verify')->name('password.verify');
+    Route::get('/recuperar-contrasena/nueva', [PasswordRecoveryController::class, 'edit'])->name('password.reset');
+    Route::post('/recuperar-contrasena/nueva', [PasswordRecoveryController::class, 'update'])
+        ->middleware('throttle:recovery-verify')->name('password.update');
 });
 
 Route::middleware('auth')->group(function () {
