@@ -1,3 +1,19 @@
+document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    const input = document.getElementById(button.getAttribute('aria-controls'));
+    if (!input) return;
+
+    const setVisible = (visible) => {
+        input.type = visible ? 'text' : 'password';
+        button.setAttribute('aria-pressed', String(visible));
+        button.setAttribute('aria-label', `${visible ? 'Ocultar' : 'Mostrar'} ${button.dataset.passwordLabel}`);
+        button.querySelector('[data-password-eye-slash]').classList.toggle('hidden', !visible);
+    };
+
+    button.classList.replace('hidden', 'flex');
+    button.addEventListener('click', () => setVisible(input.type === 'password'));
+    window.addEventListener('pageshow', () => setVisible(false));
+});
+
 document.querySelectorAll('[data-auth-actions]').forEach((container) => {
     const forms = [...container.querySelectorAll('[data-auth-form]')];
     const buttons = forms.flatMap((form) => [...form.querySelectorAll('button[type="submit"]')]);

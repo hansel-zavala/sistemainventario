@@ -48,7 +48,16 @@
                 @foreach (['password' => 'Nueva contraseña', 'password_confirmation' => 'Confirmar contraseña'] as $name => $label)
                 <div class="flex flex-col gap-2">
                     <label for="{{ $name }}" class="text-sm font-semibold">{{ $label }}</label>
-                    <input id="{{ $name }}" name="{{ $name }}" type="password" autocomplete="new-password" minlength="8" maxlength="72" required @if ($errors->any()) aria-describedby="recovery-errors" @endif class="min-h-12 rounded-xl border border-[#BBCDC7] px-4 py-3 outline-none focus:border-[#007F78] focus:ring-3 focus:ring-[#007F78]/15">
+                    <div class="relative">
+                        <input id="{{ $name }}" name="{{ $name }}" type="password" autocomplete="new-password" minlength="8" maxlength="72" required @if ($errors->any()) aria-describedby="recovery-errors" @endif class="min-h-12 w-full rounded-xl border border-[#BBCDC7] py-3 pr-14 pl-4 outline-none focus:border-[#007F78] focus:ring-3 focus:ring-[#007F78]/15">
+                        <button type="button" data-password-toggle data-password-label="{{ $name === 'password' ? 'nueva contraseña' : 'confirmación de contraseña' }}" aria-label="Mostrar {{ $name === 'password' ? 'nueva contraseña' : 'confirmación de contraseña' }}" aria-controls="{{ $name }}" aria-pressed="false" class="hidden absolute inset-y-1 right-1 w-11 cursor-pointer items-center justify-center rounded-lg text-[#526871] hover:bg-[#EAF3F0] hover:text-[#006D67] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#007F78]">
+                            <svg aria-hidden="true" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                                <circle cx="12" cy="12" r="3" />
+                                <path data-password-eye-slash d="m3 3 18 18" class="hidden" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 @endforeach
                 @endif
