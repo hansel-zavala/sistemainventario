@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\PasswordRecovery;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -89,7 +90,19 @@ class PasswordRecoveryController extends Controller
         }
 
         $data = $request->validate([
-            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
+            'password' => [
+                'bail', 'required', 'string', 'min:8', 'max:72', 'confirmed',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (! preg_match('/\p{Lu}/u', $value)) {
+                        $fail('La contraseña debe contener al menos una letra mayúscula.');
+                    }
+                },
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (! preg_match('/[\p{P}\p{S}]/u', $value)) {
+                        $fail('La contraseña debe contener al menos un símbolo.');
+                    }
+                },
+            ],
         ], [
             'password.required' => 'Ingresa tu nueva contraseña.',
             'password.min' => 'La contraseña debe contener al menos 8 caracteres.',

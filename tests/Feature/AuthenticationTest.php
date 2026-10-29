@@ -242,6 +242,10 @@ class AuthenticationTest extends TestCase
 
     #[TestWith(['short', 'short', 'La contraseña debe contener al menos 8 caracteres.'])]
     #[TestWith(['NuevaClave123!', 'OtraClave123!', 'Las contraseñas no coinciden.'])]
+    #[TestWith(['nuevaclave123!', 'nuevaclave123!', 'La contraseña debe contener al menos una letra mayúscula.'])]
+    #[TestWith(['NuevaClave123', 'NuevaClave123', 'La contraseña debe contener al menos un símbolo.'])]
+    #[TestWith(['Nueva Clave123', 'Nueva Clave123', 'La contraseña debe contener al menos un símbolo.'])]
+    #[TestWith(['12345678!', '12345678!', 'La contraseña debe contener al menos una letra mayúscula.'])]
     public function test_new_password_must_be_valid_and_confirmed(string $password, string $confirmation, string $error): void
     {
         Mail::fake();
@@ -579,5 +583,20 @@ class AuthenticationTest extends TestCase
             ->assertRedirect(route('login'))->assertSessionHasErrors('throttle');
         $this->postJson(route('login.store'), ['email' => 'another@example.com', 'password' => 'incorrect'])
             ->assertTooManyRequests()->assertJsonPath('message', 'Has realizado demasiados intentos. Espera 60 segundos antes de volver a intentarlo.');
+    }
+
+    #[TestWith(['Ábcdefg!'])]
+    #[TestWith(['ABCDEFG!'])]
+    #[TestWith(['ClaveLarga€'])]
+    public function test_password_accepts_uppercase_and_symbols_without_requiring_lowercase_or_digits(string $password): void
+    {
+        Mail::fake();
+        $user = User::factory()->create(['activo' => true]);
+        $code = $this->requestCode($user);
+        $this->post(route('password.verify'), ['code' => $code])->assertRedirect(route('password.reset'));
+        $this->post(route('password.update'), ['password' => $password, 'password_confirmation' => $password])
+            ->assertRedirect(route('login'))->assertSessionHasNoErrors();
+        $this->assertTrue(Hash::check($password, $user->fresh()->password));
+        Mail::assertSent(PasswordChanged::class, 1);
     }
 }
