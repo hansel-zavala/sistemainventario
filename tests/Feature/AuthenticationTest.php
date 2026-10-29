@@ -55,10 +55,10 @@ class AuthenticationTest extends TestCase
         Auth::forgetGuards();
         $this->travel(1)->hours();
         $this->get(route('dashboard'))->assertRedirect(route('login'))
-            ->assertSessionHas('auth_notice', 'Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
+            ->assertSessionHas('auth_notice', 'Se venció la sesión. Inicia sesión nuevamente.');
         $this->assertGuest();
-        $this->get(route('login'))->assertOk()->assertSee('Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
-        $this->get(route('login'))->assertDontSee('Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
+        $this->get(route('login'))->assertOk()->assertSee('Se venció la sesión. Inicia sesión nuevamente.');
+        $this->get(route('login'))->assertDontSee('Se venció la sesión. Inicia sesión nuevamente.');
     }
 
     public function test_a_session_without_remember_also_cannot_exceed_the_workday(): void
@@ -569,7 +569,7 @@ class AuthenticationTest extends TestCase
         $this->travel(8)->hours();
         Auth::forgetGuards();
         $this->post(route('logout'))->assertRedirect(route('login'))
-            ->assertSessionHas('auth_notice', 'Tu jornada de 8 horas terminó. Inicia sesión nuevamente.');
+            ->assertSessionHas('auth_notice', 'Se venció la sesión. Inicia sesión nuevamente.');
         $this->assertGuest();
     }
 

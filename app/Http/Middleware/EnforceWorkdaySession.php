@@ -29,8 +29,8 @@ class EnforceWorkdaySession
                 $message = match (true) {
                     ! $user->activo => 'Tu cuenta está inactiva. Contacta al Departamento de Informática.',
                     is_array($window) && isset($window['password']) && ! hash_equals(hash('sha256', $user->getAuthPassword()), $window['password']) => 'Tu contraseña cambió. Inicia sesión nuevamente con tu nueva contraseña.',
-                    is_array($window) && isset($window['expires_at']) && $window['expires_at'] <= now()->timestamp => 'Tu sesión vencio. Inicia sesión nuevamente.',
-                    default => 'Tu sesión venció o ya no está disponible. Inicia sesión nuevamente.',
+                    is_array($window) && isset($window['expires_at']) && $window['expires_at'] <= now()->timestamp => 'Se venció la sesión. Inicia sesión nuevamente.',
+                    default => 'Se venció la sesión. Inicia sesión nuevamente.',
                 };
                 Auth::logout();
                 Cookie::queue(Cookie::forget('auth_workday'));
