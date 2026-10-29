@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,8 +26,16 @@ class LoginController extends Controller
         ]);
 
         Auth::guard('web')->setRememberDuration(480);
+        $usuarioIntentado = User::query()->where('email', $credentials['email'])->first();
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+            RegistrarAuditoria::eventoAutenticacion(
+                'inicio_sesion_fallido',
+                $usuarioIntentado,
+                $request,
+                ['resultado' => 'credenciales_invalidas'],
+            );
+
             return back()
                 ->withErrors([
                     'email' => 'Las credenciales ingresadas no son correctas.',
@@ -36,6 +46,12 @@ class LoginController extends Controller
         $request->session()->regenerate();
 
         if (! Auth::user()->activo) {
+            RegistrarAuditoria::eventoAutenticacion(
+                'inicio_sesion_fallido',
+                Auth::user(),
+                $request,
+                ['resultado' => 'cuenta_inactiva'],
+            );
             Auth::logout();
 
             $request->session()->invalidate();
@@ -54,6 +70,14 @@ class LoginController extends Controller
         ];
         $request->session()->put('auth_window', $window);
 
+        RegistrarAuditoria::eventoAutenticacion(
+            'inicio_sesion_exitoso',
+            Auth::user(),
+            $request,
+            ['recordarme' => $request->boolean('remember')],
+            Auth::id(),
+        );
+
         if ($request->boolean('remember')) {
             Cookie::queue(Cookie::make('auth_workday', json_encode($window), 480));
         } else {
@@ -66,6 +90,15 @@ class LoginController extends Controller
 
     public function destroy(Request $request): RedirectResponse
     {
+        if ($request->user() instanceof User) {
+            RegistrarAuditoria::eventoAutenticacion(
+                'cierre_sesion',
+                $request->user(),
+                $request,
+                usuarioResponsableId: $request->user()->getKey(),
+            );
+        }
+
         Auth::logout();
 
         Cookie::queue(Cookie::forget('auth_workday'));

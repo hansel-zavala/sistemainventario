@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Services\PasswordRecovery;
+use App\Services\RegistrarAuditoria;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +29,16 @@ class PasswordRecoveryController extends Controller
             'email.email' => 'Ingresa un correo electrónico válido.',
         ]);
 
-        $recovery->sendCode($data['email']);
+        $envio = $recovery->sendCode($data['email']);
+
+        if ($envio !== null) {
+            RegistrarAuditoria::eventoAutenticacion(
+                'recuperacion_solicitada',
+                $envio['user'],
+                $request,
+                ['tipo' => $envio['reenvio'] ? 'reenvio' : 'solicitud_inicial'],
+            );
+        }
         $request->session()->forget('password_recovery');
         $request->session()->put('password_recovery.email', $data['email']);
 
@@ -66,6 +77,14 @@ class PasswordRecoveryController extends Controller
         if ($grant === null) {
             return back()->withErrors(['code' => 'El código es incorrecto, venció o alcanzó el límite de 5 intentos.']);
         }
+
+        $usuario = User::query()->where('email', $email)->first();
+        RegistrarAuditoria::eventoAutenticacion(
+            'codigo_recuperacion_verificado',
+            $usuario,
+            $request,
+            ['resultado' => 'verificado'],
+        );
 
         $request->session()->regenerate();
         $request->session()->put('password_recovery.grant', $grant);
@@ -110,15 +129,24 @@ class PasswordRecoveryController extends Controller
             'password.confirmed' => 'Las contraseñas no coinciden.',
         ]);
 
-        if (! $recovery->resetPassword(
+        $usuario = $recovery->resetPassword(
             $request->session()->get('password_recovery.email'),
             $request->session()->get('password_recovery.grant'),
             $data['password'],
-        )) {
+        );
+
+        if ($usuario === null) {
             $request->session()->forget('password_recovery');
 
             return redirect()->route('password.request')->withErrors(['code' => 'La autorización venció o ya fue utilizada. Solicita un nuevo código.']);
         }
+
+        RegistrarAuditoria::eventoAutenticacion(
+            'contrasena_restablecida',
+            $usuario,
+            $request,
+            ['origen' => 'recuperacion'],
+        );
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

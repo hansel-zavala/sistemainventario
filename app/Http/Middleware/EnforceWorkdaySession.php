@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\RegistrarAuditoria;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,6 +33,18 @@ class EnforceWorkdaySession
                     is_array($window) && isset($window['expires_at']) && $window['expires_at'] <= now()->timestamp => 'Se venció la sesión. Inicia sesión nuevamente.',
                     default => 'Se venció la sesión. Inicia sesión nuevamente.',
                 };
+                $motivo = match (true) {
+                    ! $user->activo => 'cuenta_inactiva',
+                    is_array($window) && isset($window['password']) && ! hash_equals(hash('sha256', $user->getAuthPassword()), $window['password']) => 'contrasena_cambiada',
+                    is_array($window) && isset($window['expires_at']) && $window['expires_at'] <= now()->timestamp => 'tiempo_agotado',
+                    default => 'ventana_invalida',
+                };
+                RegistrarAuditoria::eventoAutenticacion(
+                    'sesion_vencida',
+                    $user,
+                    $request,
+                    ['motivo' => $motivo],
+                );
                 Auth::logout();
                 Cookie::queue(Cookie::forget('auth_workday'));
                 $request->session()->invalidate();

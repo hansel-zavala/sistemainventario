@@ -16,6 +16,7 @@ class Auditoria extends Model
         'valores_anteriores',
         'valores_nuevos',
         'usuario_id',
+        'ip_address',
     ];
 
     protected function casts(): array
@@ -33,5 +34,10 @@ class Auditoria extends Model
             User::class,
             'usuario_id'
         );
+    }
+
+    public function usuarioAfectado(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'registro_id');
     }
 }

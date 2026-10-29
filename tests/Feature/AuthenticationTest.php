@@ -27,7 +27,9 @@ class AuthenticationTest extends TestCase
             'database/migrations/0001_01_01_000000_create_users_table.php',
             'database/migrations/2026_09_09_095145_create_permission_tables.php',
             'database/migrations/2026_09_09_095349_add_activo_to_users_table.php',
+            'database/migrations/2026_10_19_152605_create_auditorias_table.php',
             'database/migrations/2026_10_27_120000_add_verification_fields_to_password_reset_tokens_table.php',
+            'database/migrations/2026_10_28_235525_add_authentication_context_to_auditorias_table.php',
         ]];
     }
 

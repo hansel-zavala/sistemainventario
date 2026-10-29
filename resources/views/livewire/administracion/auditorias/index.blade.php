@@ -4,7 +4,7 @@
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Auditoría del sistema</h1>
             <p class="mt-1 text-sm text-gray-500">
-                Consulte las operaciones administrativas y los cambios realizados por los usuarios.
+                Consulte las operaciones administrativas, accesos y eventos de seguridad del sistema.
             </p>
         </div>
         <span class="inline-flex w-fit items-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600">
@@ -19,7 +19,7 @@
             <div>
                 <label for="auditoriaBuscar" class="mb-1 block text-sm font-medium text-gray-700">Buscar</label>
                 <input id="auditoriaBuscar" type="text" wire:model.live.debounce.400ms="buscar"
-                       placeholder="Usuario, módulo o acción"
+                       placeholder="Usuario, módulo, acción o IP"
                        class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 focus:border-blue-500 focus:ring-blue-500">
             </div>
             <div>
@@ -76,7 +76,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
             <div>
                 <h2 class="font-semibold text-gray-800">Historial de auditoría</h2>
-                <p class="mt-1 text-xs text-gray-500">Consulta de creaciones, modificaciones, cambios de estado, roles y contraseñas.</p>
+                <p class="mt-1 text-xs text-gray-500">Consulta de operaciones administrativas y eventos de autenticación.</p>
             </div>
             <span class="text-sm text-gray-500">{{ $auditorias->total() }} registros</span>
         </div>
@@ -98,17 +98,26 @@
                             <td class="whitespace-nowrap px-5 py-4 text-gray-600">
                                 {{ $auditoria->created_at?->format('d/m/Y H:i:s') ?? 'Sin fecha' }}
                             </td>
-                            <td class="px-5 py-4 text-gray-600">{{ $auditoria->usuario?->name ?? 'Usuario no disponible' }}</td>
+                            <td class="px-5 py-4 text-gray-600">{{ $auditoria->usuario?->name ?? ($auditoria->modelo === 'autenticacion' ? 'Sistema / No autenticado' : 'Usuario no disponible') }}</td>
                             <td class="px-5 py-4 font-medium text-gray-800">
                                 {{ $modulos[$auditoria->modelo] ?? class_basename($auditoria->modelo) }}
                             </td>
-                            <td class="px-5 py-4 text-gray-600">#{{ $auditoria->registro_id }}</td>
+                            <td class="px-5 py-4 text-gray-600">
+                                @if ($auditoria->modelo === 'autenticacion')
+                                    {{ $auditoria->usuarioAfectado?->name ?? 'Evento anónimo' }}
+                                @else
+                                    #{{ $auditoria->registro_id }}
+                                @endif
+                            </td>
                             <td class="px-5 py-4">
                                 @php
                                     $colorAccion = match ($auditoria->accion) {
                                         'creacion', 'activacion' => 'bg-green-100 text-green-800',
                                         'desactivacion' => 'bg-red-100 text-red-800',
-                                        'cambio_rol', 'cambio_contrasena' => 'bg-purple-100 text-purple-800',
+                                        'cambio_rol', 'cambio_contrasena', 'contrasena_restablecida' => 'bg-purple-100 text-purple-800',
+                                        'inicio_sesion_fallido', 'bloqueo_login', 'sesion_vencida' => 'bg-red-100 text-red-800',
+                                        'inicio_sesion_exitoso', 'cierre_sesion' => 'bg-cyan-100 text-cyan-800',
+                                        'recuperacion_solicitada', 'codigo_recuperacion_verificado' => 'bg-amber-100 text-amber-800',
                                         default => 'bg-blue-100 text-blue-800',
                                     };
                                 @endphp
@@ -147,7 +156,7 @@
                             Detalle de auditoría #{{ $auditoriaSeleccionada->id }}
                         </h2>
                         <p class="mt-1 text-sm text-gray-500">
-                            {{ $auditoriaSeleccionada->usuario?->name ?? 'Usuario no disponible' }}
+                            {{ $auditoriaSeleccionada->usuario?->name ?? ($auditoriaSeleccionada->modelo === 'autenticacion' ? 'Sistema / No autenticado' : 'Usuario no disponible') }}
                             · {{ $auditoriaSeleccionada->created_at?->format('d/m/Y H:i:s') ?? 'Sin fecha' }}
                         </p>
                     </div>
@@ -166,7 +175,13 @@
                         </div>
                         <div>
                             <p class="text-gray-500">Registro</p>
-                            <p class="font-medium text-gray-800">#{{ $auditoriaSeleccionada->registro_id }}</p>
+                            <p class="font-medium text-gray-800">
+                                @if ($auditoriaSeleccionada->modelo === 'autenticacion')
+                                    {{ $auditoriaSeleccionada->usuarioAfectado?->name ?? 'Evento anónimo' }}
+                                @else
+                                    #{{ $auditoriaSeleccionada->registro_id }}
+                                @endif
+                            </p>
                         </div>
                         <div>
                             <p class="text-gray-500">Acción</p>
@@ -175,6 +190,13 @@
                             </p>
                         </div>
                     </div>
+
+                    @if ($auditoriaSeleccionada->ip_address)
+                        <div class="text-sm">
+                            <p class="text-gray-500">Dirección IP</p>
+                            <p class="font-medium text-gray-800">{{ $auditoriaSeleccionada->ip_address }}</p>
+                        </div>
+                    @endif
 
                     @php
                         $anteriores = $auditoriaSeleccionada->valores_anteriores ?? [];

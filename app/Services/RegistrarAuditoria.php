@@ -3,8 +3,11 @@
 namespace App\Services;
 
 use App\Models\Auditoria;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class RegistrarAuditoria
 {
@@ -115,6 +118,37 @@ class RegistrarAuditoria
         );
     }
 
+    /**
+     * Registra un evento de autenticación sin almacenar credenciales, códigos o tokens.
+     *
+     * @param  array<string, bool|string>  $detalles
+     */
+    public static function eventoAutenticacion(
+        string $accion,
+        ?User $usuarioAfectado,
+        Request $request,
+        array $detalles = [],
+        ?int $usuarioResponsableId = null,
+    ): void {
+        $detalles = array_filter(
+            $detalles,
+            fn (string $campo): bool => ! Str::contains(
+                Str::lower(Str::ascii($campo)),
+                ['password', 'contrasena', 'codigo', 'code', 'token', 'cookie', 'session', 'sesion', 'email', 'correo'],
+            ),
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        Auditoria::create([
+            'modelo' => 'autenticacion',
+            'registro_id' => $usuarioAfectado?->getKey(),
+            'accion' => $accion,
+            'valores_anteriores' => null,
+            'valores_nuevos' => $detalles === [] ? null : $detalles,
+            'usuario_id' => $usuarioResponsableId,
+            'ip_address' => $request->ip(),
+        ]);
+    }
 
     /* Método central de auditoría */
 
@@ -137,6 +171,7 @@ class RegistrarAuditoria
             'valores_anteriores' => $valoresAnteriores,
             'valores_nuevos' => $valoresNuevos,
             'usuario_id' => Auth::id(),
+            'ip_address' => request()->ip(),
         ]);
     }
 }

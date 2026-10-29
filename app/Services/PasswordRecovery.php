@@ -15,7 +15,8 @@ use Throwable;
 
 class PasswordRecovery
 {
-    public function sendCode(string $email): void
+    /** @return array{user: User, reenvio: bool}|null */
+    public function sendCode(string $email): ?array
     {
         $delivery = DB::transaction(function () use ($email): ?array {
             $user = User::where('email', $email)->where('activo', true)->lockForUpdate()->first();
@@ -41,11 +42,17 @@ class PasswordRecovery
                 'verified' => false,
             ]);
 
-            return ['email' => $user->email, 'code' => $code, 'hash' => $hash];
+            return [
+                'email' => $user->email,
+                'code' => $code,
+                'hash' => $hash,
+                'user' => $user,
+                'reenvio' => $existing !== null,
+            ];
         });
 
         if ($delivery === null) {
-            return;
+            return null;
         }
 
         try {
@@ -54,7 +61,11 @@ class PasswordRecovery
             DB::table('password_reset_tokens')->where('email', $delivery['email'])
                 ->where('token', $delivery['hash'])->delete();
             report($exception);
+
+            return null;
         }
+
+        return ['user' => $delivery['user'], 'reenvio' => $delivery['reenvio']];
     }
 
     public function verifyCode(string $email, string $code): ?string
@@ -91,7 +102,7 @@ class PasswordRecovery
         });
     }
 
-    public function resetPassword(string $email, string $grant, string $password): bool
+    public function resetPassword(string $email, string $grant, string $password): ?User
     {
         $user = DB::transaction(function () use ($email, $grant, $password): ?User {
             $user = User::where('email', $email)->where('activo', true)->lockForUpdate()->first();
@@ -118,7 +129,7 @@ class PasswordRecovery
         });
 
         if ($user === null) {
-            return false;
+            return null;
         }
 
         event(new PasswordReset($user));
@@ -129,6 +140,6 @@ class PasswordRecovery
             report($exception);
         }
 
-        return true;
+        return $user;
     }
 }

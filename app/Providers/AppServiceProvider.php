@@ -2,10 +2,13 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -70,6 +73,20 @@ class AppServiceProvider extends ServiceProvider
     {
         $seconds = (int) $headers['Retry-After'];
         $message = "Has realizado demasiados intentos. Espera {$seconds} segundos antes de volver a intentarlo.";
+
+        if ($request->routeIs('login.store')) {
+            $auditKey = 'audit:login-blocked:'.hash('sha256', (string) $request->ip());
+
+            if (Cache::add($auditKey, true, now()->addMinute())) {
+                $usuario = User::query()->where('email', $this->emailKey($request))->first();
+                RegistrarAuditoria::eventoAutenticacion(
+                    'bloqueo_login',
+                    $usuario,
+                    $request,
+                    ['resultado' => 'demasiados_intentos'],
+                );
+            }
+        }
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $message], 429, $headers);

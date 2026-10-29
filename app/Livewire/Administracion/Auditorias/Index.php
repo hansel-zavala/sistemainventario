@@ -41,6 +41,7 @@ class Index extends Component
 
     /* Módulos disponibles */
     public const MODULOS = [
+        'autenticacion' => 'Autenticación',
         User::class => 'Usuarios',
         Equipo::class => 'Equipos tecnológicos',
         Herramienta::class => 'Herramientas',
@@ -60,6 +61,14 @@ class Index extends Component
         'desactivacion' => 'Desactivación',
         'cambio_rol' => 'Cambio de rol',
         'cambio_contrasena' => 'Cambio de contraseña',
+        'inicio_sesion_exitoso' => 'Inicio de sesión exitoso',
+        'inicio_sesion_fallido' => 'Inicio de sesión fallido',
+        'bloqueo_login' => 'Bloqueo de inicio de sesión',
+        'cierre_sesion' => 'Cierre de sesión',
+        'sesion_vencida' => 'Sesión vencida',
+        'recuperacion_solicitada' => 'Recuperación solicitada',
+        'codigo_recuperacion_verificado' => 'Código de recuperación verificado',
+        'contrasena_restablecida' => 'Contraseña restablecida',
     ];
 
     /* Seguridad */
@@ -138,7 +147,7 @@ class Index extends Component
         $usuario = Auth::user();
 
         abort_unless(
-            $usuario instanceof \App\Models\User
+            $usuario instanceof User
                 && $usuario->roles()
                     ->where('name', 'Administrador')
                     ->exists(),
@@ -153,7 +162,7 @@ class Index extends Component
         $this->autorizar();
 
         $auditorias = Auditoria::query()
-            ->with('usuario')
+            ->with(['usuario:id,name', 'usuarioAfectado:id,name'])
 
             ->when(
                 $this->filtroModulo !== ''
@@ -161,7 +170,7 @@ class Index extends Component
                         $this->filtroModulo,
                         self::MODULOS
                     ),
-                fn($query) => $query->where(
+                fn ($query) => $query->where(
                     'modelo',
                     $this->filtroModulo
                 )
@@ -173,7 +182,7 @@ class Index extends Component
                         $this->filtroAccion,
                         self::ACCIONES
                     ),
-                fn($query) => $query->where(
+                fn ($query) => $query->where(
                     'accion',
                     $this->filtroAccion
                 )
@@ -182,7 +191,7 @@ class Index extends Component
             ->when(
                 $this->filtroUsuario !== ''
                     && ctype_digit($this->filtroUsuario),
-                fn($query) => $query->where(
+                fn ($query) => $query->where(
                     'usuario_id',
                     (int) $this->filtroUsuario
                 )
@@ -190,7 +199,7 @@ class Index extends Component
 
             ->when(
                 $this->fechaDesde !== '',
-                fn($query) => $query->whereDate(
+                fn ($query) => $query->whereDate(
                     'created_at',
                     '>=',
                     $this->fechaDesde
@@ -199,7 +208,7 @@ class Index extends Component
 
             ->when(
                 $this->fechaHasta !== '',
-                fn($query) => $query->whereDate(
+                fn ($query) => $query->whereDate(
                     'created_at',
                     '<=',
                     $this->fechaHasta
@@ -209,14 +218,13 @@ class Index extends Component
             ->when(
                 trim($this->buscar) !== '',
                 function ($query) {
-                    $buscar = '%' . trim($this->buscar) . '%';
+                    $buscar = '%'.trim($this->buscar).'%';
 
                     $query->where(function ($subquery) use ($buscar) {
                         $subquery
                             ->whereHas(
                                 'usuario',
-                                fn($usuarioQuery) =>
-                                $usuarioQuery
+                                fn ($usuarioQuery) => $usuarioQuery
                                     ->where('name', 'like', $buscar)
                             )
                             ->orWhere(
@@ -226,6 +234,19 @@ class Index extends Component
                             )
                             ->orWhere(
                                 'modelo',
+                                'like',
+                                $buscar
+                            )
+                            ->orWhere(
+                                fn ($consultaAutenticacion) => $consultaAutenticacion
+                                    ->where('modelo', 'autenticacion')
+                                    ->whereHas(
+                                        'usuarioAfectado',
+                                        fn ($usuarioQuery) => $usuarioQuery->where('name', 'like', $buscar)
+                                    )
+                            )
+                            ->orWhere(
+                                'ip_address',
                                 'like',
                                 $buscar
                             );
@@ -247,7 +268,7 @@ class Index extends Component
             && $this->auditoriaSeleccionadaId !== null
         ) {
             $auditoriaSeleccionada = Auditoria::query()
-                ->with('usuario')
+                ->with(['usuario:id,name', 'usuarioAfectado:id,name'])
                 ->find($this->auditoriaSeleccionadaId);
         }
 
