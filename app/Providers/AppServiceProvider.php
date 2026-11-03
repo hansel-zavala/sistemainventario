@@ -42,6 +42,8 @@ class AppServiceProvider extends ServiceProvider
         ]);
         RateLimiter::for('recovery-verify', fn (Request $request) => Limit::perMinute(10)->by('recovery-verify:'.$request->ip())
             ->response(fn (Request $request, array $headers) => $this->authenticationCooldownResponse($request, $headers)));
+        RateLimiter::for('profile-password', fn (Request $request) => Limit::perMinute(5)->by('profile-password:'.$request->user()->id)
+            ->response(fn (Request $request, array $headers) => $this->authenticationCooldownResponse($request, $headers)));
     }
 
     private function emailKey(Request $request): string
@@ -90,6 +92,10 @@ class AppServiceProvider extends ServiceProvider
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $message], 429, $headers);
+        }
+
+        if ($request->routeIs('perfil.password.update')) {
+            return redirect()->route('perfil.show')->withHeaders($headers)->withErrors(['throttle' => $message], 'password');
         }
 
         if ($request->routeIs('login.store')) {

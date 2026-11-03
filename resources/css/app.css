@@ -7,3 +7,169 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+@theme inline {
+    --color-canvas: var(--app-canvas);
+    --color-surface: var(--app-surface);
+    --color-ink: var(--app-ink);
+    --color-muted: var(--app-muted);
+    --color-line: var(--app-line);
+    --color-accent: var(--app-accent);
+    --color-accent-soft: var(--app-accent-soft);
+}
+
+:root {
+    --app-canvas: #f4f6f9;
+    --app-surface: #ffffff;
+    --app-ink: #243746;
+    --app-muted: #5c6c80;
+    --app-line: #e1e7ef;
+    --app-accent: #175cba;
+    --app-accent-soft: #eaf2ff;
+}
+
+@layer components {
+    .app-icon {
+        @apply size-5 shrink-0;
+    }
+
+    .app-shell {
+        font-family: 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+    }
+
+    .app-shell :where(a, button, input, summary):focus-visible {
+        outline: 2px solid var(--app-accent);
+        outline-offset: 3px;
+    }
+
+    .icon-button {
+        @apply inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-accent-soft hover:text-accent;
+    }
+
+    .nav-link {
+        @apply flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted hover:bg-canvas hover:text-ink;
+    }
+
+    .nav-link[aria-current='page'] {
+        @apply bg-accent text-white hover:bg-accent hover:text-white;
+    }
+
+    .nav-group-active {
+        @apply text-accent;
+    }
+
+    .nav-chevron {
+        transition: transform 160ms ease;
+    }
+
+    [data-group-toggle][aria-expanded='true'] .nav-chevron {
+        transform: rotate(90deg);
+    }
+
+    .nav-group-panel {
+        @apply my-2 ml-2 border-l border-line pl-2;
+    }
+
+    .sidebar-search-compact, .nav-flyout-heading {
+        display: none;
+    }
+
+    .app-sidebar {
+        height: 100dvh;
+        transform: translateX(-100%);
+        visibility: hidden;
+    }
+
+    [data-mobile-open='true'] .app-sidebar {
+        transform: translateX(0);
+        visibility: visible;
+    }
+
+    .profile-input {
+        @apply min-h-12 w-full rounded-lg border border-line bg-surface px-4 py-3 text-sm text-ink;
+    }
+
+    .primary-button {
+        @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .secondary-button {
+        @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-ink hover:bg-canvas;
+    }
+}
+
+@media (min-width: 64rem) {
+    .app-sidebar {
+        transform: none;
+        visibility: visible;
+    }
+
+    .app-content {
+        margin-left: 18rem;
+    }
+
+    [data-sidebar-compact='true'] .app-sidebar {
+        width: 5rem;
+    }
+
+    [data-sidebar-compact='true'] .app-content {
+        margin-left: 5rem;
+    }
+
+    [data-sidebar-compact='true'] .sidebar-account {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    [data-sidebar-compact='true'] .sidebar-profile {
+        flex: none;
+        justify-content: center;
+    }
+
+    [data-sidebar-compact='true'] .sidebar-label,
+    [data-sidebar-compact='true'] .sidebar-search {
+        display: none;
+    }
+
+    [data-sidebar-compact='true'] .sidebar-search-compact {
+        display: inline-flex;
+    }
+
+    [data-sidebar-compact='true'] .nav-group-panel {
+        position: fixed;
+        left: 5.5rem;
+        width: 17rem;
+        max-height: calc(100dvh - 2rem);
+        overflow-y: auto;
+        margin: 0;
+        padding: 0.75rem;
+        border: 1px solid var(--app-line);
+        border-radius: 0.75rem;
+        background: var(--app-surface);
+        box-shadow: 0 12px 35px #24374620;
+    }
+
+    [data-sidebar-compact='true'] .nav-flyout-heading {
+        display: block;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .app-sidebar {
+        transition: width 180ms ease, transform 180ms ease, visibility 180ms;
+    }
+
+    .app-content {
+        transition: margin-left 180ms ease;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-chevron {
+        transition: none;
+    }
+}
+
+.app-shell [hidden] {
+    display: none !important;
+}

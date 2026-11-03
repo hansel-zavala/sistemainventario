@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordRecoveryController;
+use App\Http\Controllers\PerfilController;
 use App\Livewire\Administracion\Auditorias\Index as AuditoriasIndex;
 use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
@@ -42,6 +43,11 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+
+    Route::get('/mi-perfil', [PerfilController::class, 'show'])->name('perfil.show');
+    Route::patch('/mi-perfil', [PerfilController::class, 'update'])->name('perfil.update');
+    Route::put('/mi-perfil/contrasena', [PerfilController::class, 'updatePassword'])
+        ->middleware('throttle:profile-password')->name('perfil.password.update');
 
     Route::get('/', function () {
         return redirect()->route('dashboard');

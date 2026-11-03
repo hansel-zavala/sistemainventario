@@ -1,11 +1,15 @@
 <x-mail::message>
 # Tu contraseña fue actualizada
 
-La contraseña de tu cuenta en el Sistema de Inventario y Servicios Técnicos se cambió mediante el proceso de recuperación.
+La contraseña de tu cuenta en el Sistema de Inventario y Servicios Técnicos se cambió {{ $fromProfile ? 'desde Mi perfil' : 'mediante el proceso de recuperación' }}.
 
 **Fecha y hora:** {{ $changedAt }}
 
+@if ($fromProfile)
+Los demás accesos quedaron invalidados. La sesión donde realizaste el cambio permanece abierta hasta su vencimiento habitual.
+@else
 Los accesos anteriores quedaron invalidados. Para volver a ingresar, utiliza tu nueva contraseña.
+@endif
 
 Si realizaste este cambio, no necesitas hacer nada más.
 

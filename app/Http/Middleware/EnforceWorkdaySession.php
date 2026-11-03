@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Services\RegistrarAuditoria;
 use Closure;
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
@@ -45,7 +46,10 @@ class EnforceWorkdaySession
                     $request,
                     ['motivo' => $motivo],
                 );
-                Auth::logout();
+
+                /** @var SessionGuard $guard */
+                $guard = Auth::guard('web');
+                $guard->logoutCurrentDevice();
                 Cookie::queue(Cookie::forget('auth_workday'));
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();

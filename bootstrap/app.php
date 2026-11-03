@@ -36,11 +36,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request): Response {
             if ($response->getStatusCode() !== 419 || $request->expectsJson()
-                || ! $request->routeIs('login.store', 'password.email', 'password.verify', 'password.update', 'logout')) {
+                || ! $request->routeIs('login.store', 'password.email', 'password.verify', 'password.update', 'logout', 'perfil.update', 'perfil.password.update')) {
                 return $response;
             }
 
-            $route = $request->routeIs('password.*') ? 'password.request' : 'login';
+            $route = match (true) {
+                $request->routeIs('perfil.*') => 'perfil.show',
+                $request->routeIs('password.*') => 'password.request',
+                default => 'login',
+            };
 
             return redirect()->route($route)->withErrors([
                 'session' => 'La sesión del formulario venció. Vuelve a intentarlo desde esta página.',

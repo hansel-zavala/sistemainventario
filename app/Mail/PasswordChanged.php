@@ -16,7 +16,7 @@ class PasswordChanged extends Mailable
     /**
      * Create a new message instance.
      */
-    public function __construct(public string $changedAt) {}
+    public function __construct(public string $changedAt, public bool $fromProfile = false) {}
 
     /**
      * Get the message envelope.

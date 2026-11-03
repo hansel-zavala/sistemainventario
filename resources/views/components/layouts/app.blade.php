@@ -1,265 +1,76 @@
+@php
+    $navigation = [
+        ['label' => 'Inventario', 'icon' => 'inventory', 'items' => [
+            ['inventario.equipos', 'Equipos tecnológicos', 'monitor'],
+            ['inventario.herramientas', 'Herramientas', 'tools'],
+            ['inventario.insumos', 'Insumos', 'box'],
+            ['inventario.tintas', 'Tinta', 'drop'],
+            ['inventario.tintas.recargas', 'Recargas de tinta', 'refill'],
+        ]],
+        ['label' => 'Movimientos', 'icon' => 'movements', 'items' => [
+            ['movimientos.entradas', 'Entradas', 'entry'],
+            ['movimientos.salidas', 'Salidas', 'exit'],
+            ['movimientos.prestamos', 'Préstamos', 'loan'],
+            ['movimientos.devoluciones', 'Devoluciones', 'return'],
+        ]],
+        ['label' => 'Catálogos', 'icon' => 'catalog', 'items' => [
+            ['catalogos.categorias', 'Categorías', 'tag'],
+            ['catalogos.tipos-equipo', 'Tipos de equipo', 'devices'],
+            ['catalogos.marcas', 'Marcas', 'brand'],
+            ['catalogos.departamentos', 'Departamentos', 'building'],
+            ['catalogos.unidades-medida', 'Unidades de medida', 'ruler'],
+        ]],
+        ['label' => 'Historial', 'icon' => 'history', 'items' => [
+            ['historial.movimientos', 'Historial de movimientos', 'history'],
+        ]],
+    ];
+
+    if (auth()->user()->hasRole('Administrador')) {
+        $navigation[] = ['label' => 'Administración', 'icon' => 'shield', 'items' => [
+            ['administracion.usuarios', 'Usuarios', 'users'],
+            ['administracion.auditorias', 'Auditoría del sistema', 'audit'],
+        ]];
+    }
+
+    $currentSection = null;
+    $currentPage = request()->routeIs('perfil.*') ? 'Mi perfil' : ($title ?? 'Dashboard');
+    foreach ($navigation as $group) {
+        foreach ($group['items'] as [$route, $label]) {
+            if (request()->routeIs($route)) {
+                $currentSection = $group['label'];
+                $currentPage = $label;
+            }
+        }
+    }
+@endphp
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0">
-
-    <title>
-        {{ $title ?? 'Sistema de Inventario' }}
-    </title>
-
-     <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.png') }}">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ $title ?? $currentPage }} | Sistema de Inventario</title>
+    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.png') }}">
+    <script>
+        try {
+            document.documentElement.dataset.sidebarCompact = localStorage.getItem('inventory.sidebar.{{ auth()->id() }}.compact') === 'true' ? 'true' : 'false';
+        } catch {}
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-
     @livewireStyles
 </head>
-
-<body class="min-h-screen bg-gray-100">
-
-    <div class="min-h-screen flex">
-
-        <aside class="w-64 bg-gray-900 text-white min-h-screen">
-
-            <div class="px-6 py-6 border-b border-gray-800">
-
-                <h1 class="font-bold text-lg">
-                    Sistema de Inventario
-                </h1>
-
-                <p class="text-sm text-gray-400 mt-1">
-                    Departamento de Informática
-                </p>
-
-            </div>
-
-            <nav class="p-4 space-y-2">
-
-                <a
-                    href="{{ route('dashboard') }}"
-                    class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                    Dashboard
-                </a>
-
-                <div class="pt-3">
-
-                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        Inventario
-                    </p>
-
-                    <a
-                        href="{{ route('inventario.equipos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Equipos tecnológicos
-                    </a>
-
-                    <a
-                        href="{{ route('inventario.herramientas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Herramientas
-                    </a>
-
-                    <a
-                        href="{{ route('inventario.insumos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Insumos
-                    </a>
-
-                    <a
-                        href="{{ route('inventario.tintas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Tinta
-                    </a>
-
-                    <a
-                        href="{{ route('inventario.tintas.recargas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Recargas de tinta
-                    </a>
-
-                </div>
-
-                <div class="pt-3">
-
-                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        Movimientos
-                    </p>
-
-                    <a
-                        href="{{ route('movimientos.entradas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Entradas
-                    </a>
-
-                    <a
-                        href="{{ route('movimientos.salidas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Salidas
-                    </a>
-
-                    <a
-                        href="{{ route('movimientos.prestamos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Préstamos
-                    </a>
-
-                    <a
-                        href="{{ route('movimientos.devoluciones') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Devoluciones
-                    </a>
-
-                </div>
-
-                <div class="pt-3">
-
-                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        Catálogos
-                    </p>
-
-                    <a
-                        href="{{ route('catalogos.categorias') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Categorías
-                    </a>
-
-                    <a
-                        href="{{ route('catalogos.tipos-equipo') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Tipos de equipo
-                    </a>
-
-                    <a
-                        href="{{ route('catalogos.marcas') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Marcas
-                    </a>
-
-                    <a
-                        href="{{ route('catalogos.departamentos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Departamentos
-                    </a>
-
-                    <a
-                        href="{{ route('catalogos.unidades-medida') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800">
-                        Unidades de medida
-                    </a>
-
-                </div>
-
-
-                {{-- Historial y Auditoría --}}
-                <div class="pt-3">
-
-                    <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        Historial y Auditoría
-                    </p>
-
-                    <a
-                        href="{{ route('historial.movimientos') }}"
-                        class="block rounded-lg px-4 py-2 hover:bg-gray-800
-                        {{ request()->routeIs('historial.movimientos')
-                            ? 'bg-gray-800 text-white font-medium'
-                            : ''
-                        }}">
-                        Historial de movimientos
-                    </a>
-
-                </div>
-
-
-                @role('Administrador')
-
-                    <div class="pt-3">
-
-                        <p class="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Administración
-                        </p>
-
-                        {{-- Usuarios --}}
-                        <a
-                            href="{{ route('administracion.usuarios') }}"
-                            class="block rounded-lg px-4 py-2 hover:bg-gray-800
-                            {{ request()->routeIs('administracion.usuarios')
-                                ? 'bg-gray-800 text-white font-medium'
-                                : ''
-                            }}">
-                            Usuarios
-                        </a>
-
-                        {{-- Auditoría del sistema --}}
-                        <a
-                            href="{{ route('administracion.auditorias') }}"
-                            class="block rounded-lg px-4 py-2 hover:bg-gray-800
-                            {{ request()->routeIs('administracion.auditorias')
-                                ? 'bg-gray-800 text-white font-medium'
-                                : ''
-                            }}">
-                            Auditoría del sistema
-                        </a>
-
-                    </div>
-
-                @endrole
-
-            </nav>
-
-        </aside>
-
-
-        <div class="flex-1">
-
-            <header class="bg-white border-b border-gray-200 px-8 py-4">
-
-                <div class="flex items-center justify-between">
-
-                    <div>
-
-                        <p class="font-semibold text-gray-800">
-                            {{ auth()->user()->name }}
-                        </p>
-
-                        <p class="text-sm text-gray-500">
-                            {{ auth()->user()->getRoleNames()->first() }}
-                        </p>
-
-                    </div>
-
-                    <form
-                        method="POST"
-                        action="{{ route('logout') }}">
-                        @csrf
-
-                        <button
-                            type="submit"
-                            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
-                            Cerrar sesión
-                        </button>
-
-                    </form>
-
-                </div>
-
-            </header>
-
-
-            <main class="p-8">
-
+<body class="app-shell min-h-dvh bg-canvas text-ink antialiased">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-surface focus:p-3 focus:text-accent">Saltar al contenido</a>
+    <div data-app-navigation data-user-id="{{ auth()->id() }}">
+        <button type="button" data-sidebar-backdrop hidden tabindex="-1" aria-label="Cerrar menú" class="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"></button>
+        <x-layouts.sidebar :navigation="$navigation" />
+        <div data-page-content class="app-content min-w-0">
+            <x-layouts.topbar :current-section="$currentSection" :current-page="$currentPage" />
+            <main id="main-content" tabindex="-1" class="min-w-0 p-4 outline-none sm:p-6 lg:p-8">
                 {{ $slot }}
-
             </main>
-
         </div>
-
+        <div data-navigation-tooltip hidden role="tooltip" class="pointer-events-none fixed z-[70] max-w-64 rounded-lg bg-ink px-3 py-2 text-xs font-medium text-white shadow-lg"></div>
     </div>
-
     @livewireScripts
 </body>
-
 </html>

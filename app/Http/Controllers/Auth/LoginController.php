@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\RegistrarAuditoria;
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,7 +26,9 @@ class LoginController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        Auth::guard('web')->setRememberDuration(480);
+        /** @var SessionGuard $guard */
+        $guard = Auth::guard('web');
+        $guard->setRememberDuration(480);
         $usuarioIntentado = User::query()->where('email', $credentials['email'])->first();
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
@@ -82,7 +85,7 @@ class LoginController extends Controller
             Cookie::queue(Cookie::make('auth_workday', json_encode($window), 480));
         } else {
             Cookie::queue(Cookie::forget('auth_workday'));
-            Cookie::queue(Cookie::forget(Auth::guard('web')->getRecallerName()));
+            Cookie::queue(Cookie::forget($guard->getRecallerName()));
         }
 
         return redirect()->intended(route('dashboard'));
