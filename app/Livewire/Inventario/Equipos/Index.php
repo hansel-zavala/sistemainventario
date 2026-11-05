@@ -7,6 +7,7 @@ use App\Models\Departamento;
 use App\Models\Equipo;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
+use App\Services\EquiposTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +52,88 @@ class Index extends Component
     public string $numeroInventario = '';
 
     public string $observaciones = '';
+
+    public const COLUMNS = EquiposTable::COLUMNS;
+
+    public array $visibleColumns = ['numero_inventario', 'tipo_equipo', 'marca', 'numero_serie', 'departamento', 'disponibilidad'];
+
+    public array $filters = ['categoria' => '', 'tipo' => '', 'marca' => '', 'departamento' => '', 'estado' => ''];
+
+    public function updatedFilters(): void
+    {
+        $this->resetPage();
+    }
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), $columns));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $columns = $this->visibleColumns;
+        if (in_array($column, $columns, true)) {
+            $columns = array_values(array_diff($columns, [$column]));
+        } else {
+            $columns[] = $column;
+        }
+        $this->setVisibleColumns($columns);
+    }
+
+    public function clearFilters(): void
+    {
+        $this->buscar = '';
+        $this->filters = ['categoria' => '', 'tipo' => '', 'marca' => '', 'departamento' => '', 'estado' => ''];
+        $this->resetPage();
+    }
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+
+        $this->resetPage();
+    }
+
+    public function cambiarEstado(int $id): void
+    {
+        abort_unless(Auth::user()?->activo, 403);
+        $this->resetValidation('estadoEquipo');
+
+        DB::transaction(function () use ($id): void {
+            $equipo = Equipo::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+            $anterior = (bool) $equipo->activo;
+
+            if ($anterior && $equipo->prestamos()->where('estado', 'prestado')->exists()) {
+                throw ValidationException::withMessages([
+                    'estadoEquipo' => 'No puede desactivar un equipo que tiene un préstamo pendiente.',
+                ]);
+            }
+
+            $equipo->activo = ! $anterior;
+            $equipo->save();
+            RegistrarAuditoria::cambioEstado($equipo, $anterior, ! $anterior);
+            session()->flash('mensaje', $anterior ? 'Equipo desactivado correctamente.' : 'Equipo activado correctamente.');
+        }, 3);
+        $this->resetPage();
+    }
 
     public function updatingBuscar(): void
     {
@@ -173,7 +256,6 @@ class Index extends Component
             'nuevaSiglaDepartamento.max' => 'La sigla no puede superar los 20 caracteres.',
         ];
     }
-
 
     public function guardarCatalogoRapido(): void
     {
@@ -354,7 +436,6 @@ class Index extends Component
         );
     }
 
-
     private function resetFormulario(): void
     {
         $this->equipoId = null;
@@ -457,7 +538,6 @@ class Index extends Component
         ];
     }
 
-
     public function guardarEquipo(): void
     {
         $this->validate();
@@ -493,7 +573,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->equipoId
@@ -503,8 +583,7 @@ class Index extends Component
 
             if ($inventarioDuplicado) {
                 throw ValidationException::withMessages([
-                    'numeroInventario' =>
-                    'Ya existe un equipo con este número de inventario.',
+                    'numeroInventario' => 'Ya existe un equipo con este número de inventario.',
                 ]);
             }
 
@@ -519,7 +598,7 @@ class Index extends Component
                     )
                     ->when(
                         ! $esCreacion,
-                        fn($query) => $query->where(
+                        fn ($query) => $query->where(
                             'id',
                             '!=',
                             $this->equipoId
@@ -529,8 +608,7 @@ class Index extends Component
 
                 if ($serieDuplicada) {
                     throw ValidationException::withMessages([
-                        'numeroSerie' =>
-                        'Ya existe un equipo con este número de serie.',
+                        'numeroSerie' => 'Ya existe un equipo con este número de serie.',
                     ]);
                 }
             }
@@ -582,7 +660,7 @@ class Index extends Component
                     'observaciones',
                 ]);
             } else {
-                
+
                 $equipo->fill($datos);
                 RegistrarAuditoria::guardarActualizacion($equipo);
             }
@@ -599,77 +677,22 @@ class Index extends Component
         $this->resetPage();
     }
 
-
     public function render()
     {
-        $equipos = Equipo::query()
-            ->with([
-                'categoria',
-                'tipoEquipo',
-                'departamento',
-                'marca',
-                'creador',
-            ])
-
-            ->withExists([
-                'prestamos as esta_prestado' => function ($query) {
-                    $query->where('estado', 'prestado');
-                },
-            ])
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-
-                    $buscar =
-                        '%' . trim($this->buscar) . '%';
-
-                    $query->where(
-                        function ($subQuery) use ($buscar) {
-
-                            $subQuery
-                                ->where(
-                                    'numero_inventario',
-                                    'like',
-                                    $buscar
-                                )
-                                ->orWhere(
-                                    'numero_serie',
-                                    'like',
-                                    $buscar
-                                )
-                                ->orWhere(
-                                    'modelo',
-                                    'like',
-                                    $buscar
-                                )
-                                ->orWhereHas(
-                                    'marca',
-                                    function ($marcaQuery) use ($buscar) {
-                                        $marcaQuery->where(
-                                            'nombre',
-                                            'like',
-                                            $buscar
-                                        );
-                                    }
-                                )
-                                ->orWhereHas(
-                                    'tipoEquipo',
-                                    function ($tipoQuery) use ($buscar) {
-                                        $tipoQuery->where(
-                                            'nombre',
-                                            'like',
-                                            $buscar
-                                        );
-                                    }
-                                );
-                        }
-                    );
-                }
-            )
-
-            ->latest()
-            ->paginate(10);
+        $table = app(EquiposTable::class);
+        $tableFilters = $table->validate(array_merge($this->filters, [
+            'buscar' => $this->buscar,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+            'columns' => $this->visibleColumns,
+        ]));
+        $equipos = $table->query($tableFilters)->paginate(10);
+        $filterOptions = [
+            'categoria' => Categoria::query()->where('aplica_a', 'equipo')->orderBy('nombre')->get(),
+            'tipo' => TipoEquipo::query()->orderBy('nombre')->get(),
+            'marca' => Marca::query()->orderBy('nombre')->get(),
+            'departamento' => Departamento::query()->orderBy('nombre')->get(),
+        ];
 
         $categorias = Categoria::query()
             ->where('activo', true)
@@ -696,6 +719,7 @@ class Index extends Component
             'livewire.inventario.equipos.index',
             compact(
                 'equipos',
+                'filterOptions',
                 'categorias',
                 'tiposEquipo',
                 'departamentos',

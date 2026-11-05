@@ -32,169 +32,113 @@
     @endif
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    @error('estadoEquipo')
+        <p role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ $message }}</p>
+    @enderror
 
-        <label class="mb-1 block text-sm font-medium text-gray-700">
-            Buscar equipo
-        </label>
+    <x-data-table
+        id="equipos"
+        label="Tabla de equipos tecnológicos"
+        :columns="\App\Services\EquiposTable::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar equipo"
+        search-placeholder="Inventario, serie, marca, modelo o tipo..."
+    >
+        <x-slot:export>
+            <form method="GET" action="{{ route('inventario.equipos.exportar') }}" target="_blank" rel="noopener"
+                x-data="{ desde: '', hasta: '' }">
+                <p class="text-sm font-semibold">Exportar todas las coincidencias</p>
+                <p class="mt-1 mb-3 text-xs text-muted">Respeta filtros, orden y columnas visibles. Se abre en otra pestaña.</p>
+                <input type="hidden" name="buscar" value="{{ $buscar }}">
+                <input type="hidden" name="sortColumn" value="{{ $sortColumn }}">
+                <input type="hidden" name="sortDirection" value="{{ $sortDirection }}">
+                @foreach ($filters as $name => $value)
+                    <input wire:key="export-filter-{{ $name }}" type="hidden" name="{{ $name }}" value="{{ $value }}">
+                @endforeach
+                @foreach ($visibleColumns as $column)
+                    <input wire:key="export-column-{{ $column }}" type="hidden" name="columns[]" value="{{ $column }}">
+                @endforeach
+                <fieldset class="space-y-2">
+                    <legend class="mb-2 text-xs font-medium text-muted">Fecha de registro (opcional)</legend>
+                    <label class="block text-sm">Desde
+                        <input type="date" name="desde" x-model="desde" :max="hasta || null" class="mt-1 min-h-11 w-full rounded-lg border border-line px-3">
+                    </label>
+                    <label class="block text-sm">Hasta
+                        <input type="date" name="hasta" x-model="hasta" :min="desde || null" class="mt-1 min-h-11 w-full rounded-lg border border-line px-3">
+                    </label>
+                </fieldset>
+                <div class="mt-3 grid gap-1">
+                    <button name="format" value="xlsx" class="secondary-button justify-start">Excel (.xlsx)</button>
+                    <button name="format" value="csv" class="secondary-button justify-start">CSV (.csv)</button>
+                    <button name="format" value="print" class="secondary-button justify-start">Imprimir / Guardar como PDF</button>
+                </div>
+            </form>
+        </x-slot:export>
 
-        <input
-            type="text"
-            wire:model.live.debounce.300ms="buscar"
-            placeholder="Inventario, serie, marca, modelo o tipo..."
-            class="w-full rounded-lg border border-gray-300 px-4 py-2"
-        >
+        <x-slot:filters>
+            @foreach (['categoria' => 'Categoría', 'tipo' => 'Tipo de equipo', 'marca' => 'Marca', 'departamento' => 'Procedencia'] as $name => $label)
+                <label wire:key="filter-{{ $name }}" class="min-w-36 flex-1 text-xs font-medium text-muted">{{ $label }}
+                    <select wire:model.live="filters.{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                        <option value="">Todas</option>
+                        @foreach ($filterOptions[$name] as $option)
+                            <option wire:key="filter-{{ $name }}-{{ $option->id }}" value="{{ $option->id }}">{{ $option->nombre }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endforeach
+            <label class="min-w-36 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filters.estado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="disponible">Disponible</option>
+                    <option value="prestado">Prestado</option>
+                    <option value="inactivo">Inactivo</option>
+                </select>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
 
-    </div>
+        <x-slot:summary>
+            {{ $equipos->total() }} equipos · {{ $sortColumn ? 'Orden: '.\App\Services\EquiposTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Ingresos más recientes' }}
+        </x-slot:summary>
 
+        @forelse ($equipos as $equipo)
+            <tr wire:key="equipment-{{ $equipo->id }}" class="hover:bg-canvas/60">
+                @foreach (\App\Services\EquiposTable::COLUMNS as $column => $label)
+                    @if (in_array($column, $visibleColumns, true))
+                        <td wire:key="cell-{{ $equipo->id }}-{{ $column }}" class="px-4 py-3 text-ink">
+                            @if ($column === 'tipo_equipo')
+                                <div class="font-medium">{{ $equipo->tipoEquipo->nombre }}</div>
+                                <div class="mt-0.5 text-xs text-muted">{{ $equipo->categoria->nombre }}</div>
+                            @elseif ($column === 'disponibilidad')
+                                <span @class(['inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold', 'bg-gray-100 text-gray-600' => !$equipo->activo, 'bg-amber-100 text-amber-800' => $equipo->activo && $equipo->esta_prestado, 'bg-green-100 text-green-800' => $equipo->activo && !$equipo->esta_prestado])>
+                                    {{ \App\Services\EquiposTable::status($equipo) }}
+                                </span>
+                            @else
+                                {{ \App\Services\EquiposTable::row($equipo, [$column])[0] }}
+                            @endif
+                        </td>
+                    @endif
+                @endforeach
+                <td class="px-4 py-2 text-right">
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarEquipo({{ $equipo->id }})" class="icon-button text-blue-600"
+                            title="Editar equipo" aria-label="Editar equipo {{ $equipo->numero_inventario }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $equipo->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $equipo->activo ? 'desactivar' : 'reactivar' }} el equipo {{ $equipo->numero_inventario }}?"
+                            class="icon-button {{ $equipo->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $equipo->activo ? 'Desactivar equipo' : 'Reactivar equipo' }}"
+                            aria-label="{{ $equipo->activo ? 'Desactivar' : 'Reactivar' }} equipo {{ $equipo->numero_inventario }}"><x-icon name="power" /></button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron equipos con estos filtros.</td></tr>
+        @endforelse
 
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-
-        <div class="overflow-x-auto">
-
-            <table class="w-full">
-
-                <thead class="bg-gray-50">
-
-                    <tr>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Inventario
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Equipo
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Marca / Modelo
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Serie
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Procedencia
-                        </th>
-
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Disponibilidad
-                        </th>
-
-                        <th class="px-5 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($equipos as $equipo)
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-5 py-4 font-medium text-gray-800">
-                                {{ $equipo->numero_inventario }}
-                            </td>
-
-
-                            <td class="px-5 py-4">
-
-                                <div class="font-medium text-gray-800">
-                                    {{ $equipo->tipoEquipo->nombre }}
-                                </div>
-
-                                <div class="text-sm text-gray-500">
-                                    {{ $equipo->categoria->nombre }}
-                                </div>
-
-                            </td>
-
-
-                            <td class="px-5 py-4 text-gray-600">
-
-                                {{ $equipo->marca->nombre }}
-
-                                @if ($equipo->modelo)
-                                    / {{ $equipo->modelo }}
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $equipo->numero_serie ?? '—' }}
-                            </td>
-
-
-                            <td class="px-5 py-4 text-gray-600">
-
-                                {{ $equipo->departamento->nombre }}
-
-                                @if ($equipo->departamento->sigla)
-                                    ({{ $equipo->departamento->sigla }})
-                                @endif
-
-                            </td>
-
-                            <td class="px-4 py-3">
-                                @if ($equipo->esta_prestado)
-                                    <span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                                        Prestado
-                                    </span>
-                                @else
-                                    <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-                                        Disponible
-                                    </span>
-                                @endif
-                            </td>
-
-
-                            <td class="px-5 py-4 text-right">
-
-                                <button
-                                    type="button"
-                                    wire:click="editarEquipo({{ $equipo->id }})"
-                                    class="font-medium text-blue-600 hover:text-blue-800"
-                                >
-                                    Editar
-                                </button>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-
-                            <td
-                                colspan="6"
-                                class="px-6 py-12 text-center text-gray-500"
-                            >
-                                No se encontraron equipos registrados.
-                            </td>
-
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $equipos->links() }}
-        </div>
-
-    </div>
+        <x-slot:pagination>{{ $equipos->links() }}</x-slot:pagination>
+    </x-data-table>
 
 
     @if ($mostrarModal)

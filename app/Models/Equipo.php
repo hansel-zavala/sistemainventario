@@ -22,7 +22,13 @@ class Equipo extends Model
         'numero_inventario',
         'observaciones',
         'creado_por',
+        'activo',
     ];
+
+    protected function casts(): array
+    {
+        return ['activo' => 'boolean'];
+    }
 
     public function categoria(): BelongsTo
     {
@@ -69,5 +75,5 @@ class Equipo extends Model
             PrestamoDetalle::class,
             'equipo_id'
         );
-}
+    }
 }

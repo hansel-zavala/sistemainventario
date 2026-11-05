@@ -267,7 +267,7 @@ class Index extends Component
                         ->lockForUpdate()
                         ->first();
 
-                    if (! $equipo) {
+                    if (! $equipo || ! $equipo->activo) {
                         throw ValidationException::withMessages([
                             $campoError => 'El equipo no está disponible.',
                         ]);
@@ -512,6 +512,7 @@ class Index extends Component
             );
 
         $equipos = Equipo::query()
+            ->where('activo', true)
             ->whereDoesntHave(
                 'prestamos',
                 fn ($q) => $q->where('estado', 'prestado')
