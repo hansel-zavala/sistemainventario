@@ -37,354 +37,255 @@
         </div>
     @enderror
 
-    {{-- Filtros --}}
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
-
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Nombre, código o marca..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-
-            </div>
-
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Tipo de control
-                </label>
-
-                <select
-                    wire:model.live="filtroTipo"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
+    <x-data-table
+        id="herramientas"
+        label="Tabla de herramientas"
+        :columns="\App\Livewire\Inventario\Herramientas\Index::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar herramienta"
+        search-placeholder="Nombre, código o marca..."
+        default-order-label="orden por nombre"
+    >
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Tipo de control
+                <select wire:model.live="filtroTipo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
                     <option value="individual">Individual</option>
                     <option value="cantidad">Por cantidad</option>
                 </select>
-
-            </div>
-
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
+            </label>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
                     <option value="activo">Activos</option>
                     <option value="inactivo">Inactivos</option>
                 </select>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
+        <x-slot:summary>
+            {{ $herramientas->total() }} herramientas · {{ $sortColumn ? 'Orden: '.\App\Livewire\Inventario\Herramientas\Index::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+        </x-slot:summary>
 
-            </div>
+        @forelse ($herramientas as $herramienta)
 
-        </div>
+            <tr wire:key="herramientas-row-{{ $herramienta->id }}" class="hover:bg-canvas/60">
 
-    </div>
+                @if (in_array('nombre', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-nombre" class="px-5 py-4">
 
+                    <div class="font-medium text-gray-800">
+                        {{ $herramienta->nombre }}
+                    </div>
 
-    {{-- Tabla --}}
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
+                    @if ($herramienta->marca)
 
-        <div class="overflow-x-auto">
+                        <div class="text-sm text-gray-500">
+                            {{ $herramienta->marca->nombre }}
+                        </div>
 
-            <table class="w-full">
+                    @endif
 
-                <thead class="bg-gray-50">
-
-                    <tr>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Herramienta
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Categoría
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Control
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Código
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Existencia
-                        </th>
-
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Disponibilidad
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
-
-                        <th class="px-5 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-
-                </thead>
+                </td>
+                @endif
 
 
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($herramientas as $herramienta)
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-5 py-4">
-
-                                <div class="font-medium text-gray-800">
-                                    {{ $herramienta->nombre }}
-                                </div>
-
-                                @if ($herramienta->marca)
-
-                                    <div class="text-sm text-gray-500">
-                                        {{ $herramienta->marca->nombre }}
-                                    </div>
-
-                                @endif
-
-                            </td>
+                @if (in_array('categoria', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-categoria" class="px-5 py-4 text-gray-600">
+                    {{ $herramienta->categoria->nombre }}
+                </td>
+                @endif
 
 
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $herramienta->categoria->nombre }}
-                            </td>
+                @if (in_array('tipo_control', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-tipo_control" class="px-5 py-4 text-gray-600">
+
+                    {{ $herramienta->tipo_control === 'individual'
+                        ? 'Individual'
+                        : 'Por cantidad'
+                    }}
+
+                </td>
+                @endif
 
 
-                            <td class="px-5 py-4 text-gray-600">
-
-                                {{ $herramienta->tipo_control === 'individual'
-                                    ? 'Individual'
-                                    : 'Por cantidad'
-                                }}
-
-                            </td>
+                @if (in_array('codigo_interno', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-codigo_interno" class="px-5 py-4 text-gray-600">
+                    {{ $herramienta->codigo_interno ?? '—' }}
+                </td>
+                @endif
 
 
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $herramienta->codigo_interno ?? '—' }}
-                            </td>
+                @if (in_array('cantidad_actual', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-cantidad_actual" class="px-5 py-4">
+
+                    @php
+                        $cantidad = (float) $herramienta->cantidad_actual;
+
+                        $nombreUnidad =
+                            $cantidad == 1
+                                ? $herramienta->unidadMedida->nombre_singular
+                                : $herramienta->unidadMedida->nombre_plural;
+                    @endphp
+
+                    <span
+                        class="{{ $herramienta->tipo_control === 'cantidad'
+                            && $cantidad <= (float) $herramienta->stock_minimo
+                                ? 'font-semibold text-red-600'
+                                : 'text-gray-700'
+                        }}"
+                    >
+                        {{ rtrim(rtrim(number_format($cantidad, 2, '.', ''), '0'), '.') }}
+                        {{ $nombreUnidad }}
+                    </span>
 
 
-                            <td class="px-5 py-4">
+                    @if (
+                        $herramienta->tipo_control === 'cantidad'
+                        && $cantidad <= (float) $herramienta->stock_minimo
+                    )
 
-                                @php
-                                    $cantidad = (float) $herramienta->cantidad_actual;
+                        <div class="mt-1 text-xs text-red-600">
+                            Stock bajo
+                        </div>
 
-                                    $nombreUnidad =
-                                        $cantidad == 1
-                                            ? $herramienta->unidadMedida->nombre_singular
-                                            : $herramienta->unidadMedida->nombre_plural;
-                                @endphp
+                    @endif
 
-                                <span
-                                    class="{{ $herramienta->tipo_control === 'cantidad'
-                                        && $cantidad <= (float) $herramienta->stock_minimo
-                                            ? 'font-semibold text-red-600'
-                                            : 'text-gray-700'
-                                    }}"
-                                >
-                                    {{ rtrim(rtrim(number_format($cantidad, 2, '.', ''), '0'), '.') }}
-                                    {{ $nombreUnidad }}
+                </td>
+                @endif
+
+
+                @if (in_array('disponibilidad', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-disponibilidad" class="px-4 py-3">
+
+                    @if (! $herramienta->activo)
+
+                        <span class="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                            Inactiva
+                        </span>
+
+                    @elseif ($herramienta->tipo_control === 'individual')
+
+                        @if ($herramienta->esta_prestada)
+
+                            <span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                                Prestada
+                            </span>
+
+                        @else
+
+                            <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                                Disponible
+                            </span>
+
+                        @endif
+
+                    @else
+
+                        @php
+                            $prestadas = (float) $herramienta->cantidad_prestada_pendiente;
+                            $disponibles = (float) $herramienta->cantidad_disponible_calculada;
+                        @endphp
+
+                        <div class="space-y-1">
+
+                            @if ($disponibles > 0)
+
+                                <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                                    {{ number_format($disponibles, 2, '.', '') }}
+                                    disponibles
                                 </span>
 
+                            @else
 
-                                @if (
-                                    $herramienta->tipo_control === 'cantidad'
-                                    && $cantidad <= (float) $herramienta->stock_minimo
-                                )
+                                <span class="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800">
+                                    Sin disponibilidad
+                                </span>
 
-                                    <div class="mt-1 text-xs text-red-600">
-                                        Stock bajo
-                                    </div>
+                            @endif
 
-                                @endif
+                            @if ($prestadas > 0)
 
-                            </td>
-
-                            
-                            <td class="px-4 py-3">
-
-                                @if (! $herramienta->activo)
-
-                                    <span class="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                                        Inactiva
-                                    </span>
-
-                                @elseif ($herramienta->tipo_control === 'individual')
-
-                                    @if ($herramienta->esta_prestada)
-
-                                        <span class="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                                            Prestada
-                                        </span>
-
-                                    @else
-
-                                        <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-                                            Disponible
-                                        </span>
-
-                                    @endif
-
-                                @else
-
-                                    @php
-                                        $prestadas = (float) $herramienta->cantidad_prestada_pendiente;
-                                        $disponibles = (float) $herramienta->cantidad_disponible_calculada;
-                                    @endphp
-
-                                    <div class="space-y-1">
-
-                                        @if ($disponibles > 0)
-
-                                            <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-                                                {{ number_format($disponibles, 2, '.', '') }}
-                                                disponibles
-                                            </span>
-
-                                        @else
-
-                                            <span class="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800">
-                                                Sin disponibilidad
-                                            </span>
-
-                                        @endif
-
-                                        @if ($prestadas > 0)
-
-                                            <div class="text-xs font-medium text-amber-700">
-                                                {{ number_format($prestadas, 2, '.', '') }}
-                                                prestadas
-                                            </div>
-
-                                        @else
-
-                                            <div class="text-xs text-gray-500">
-                                                Sin préstamos pendientes
-                                            </div>
-
-                                        @endif
-
-                                    </div>
-
-                                @endif
-
-                            </td>
-
-
-
-                            <td class="px-5 py-4">
-
-                                @if ($herramienta->activo)
-
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Activa
-                                    </span>
-
-                                @else
-
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                        Inactiva
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-5 py-4 text-right">
-
-                                <div class="flex justify-end gap-3">
-
-                                    <button
-                                        type="button"
-                                        wire:click="editarHerramienta({{ $herramienta->id }})"
-                                        class="font-medium text-blue-600 hover:text-blue-800"
-                                    >
-                                        Editar
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="cambiarEstado({{ $herramienta->id }})"
-                                        class="{{ $herramienta->activo
-                                            ? 'font-medium text-red-600 hover:text-red-800'
-                                            : 'font-medium text-green-600 hover:text-green-800'
-                                        }}"
-                                    >
-                                        {{ $herramienta->activo
-                                            ? 'Desactivar'
-                                            : 'Activar'
-                                        }}
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        wire:click="abrirHistorial({{ $herramienta->id }})"
-                                        class="font-medium text-indigo-600 hover:text-indigo-800"
-                                    >
-                                        Historial
-                                    </button>
-
-
+                                <div class="text-xs font-medium text-amber-700">
+                                    {{ number_format($prestadas, 2, '.', '') }}
+                                    prestadas
                                 </div>
 
-                            </td>
+                            @else
 
-                        </tr>
+                                <div class="text-xs text-gray-500">
+                                    Sin préstamos pendientes
+                                </div>
 
-                    @empty
+                            @endif
 
-                        <tr>
+                        </div>
 
-                            <td
-                                colspan="7"
-                                class="px-6 py-12 text-center text-gray-500"
-                            >
-                                No se encontraron herramientas registradas.
-                            </td>
+                    @endif
 
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
+                </td>
+                @endif
 
 
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $herramientas->links() }}
-        </div>
 
-    </div>
+                @if (in_array('activo', $visibleColumns, true))
+                <td wire:key="herramientas-cell-{{ $herramienta->id }}-activo" class="px-5 py-4">
+
+                    @if ($herramienta->activo)
+
+                        <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+                            Activa
+                        </span>
+
+                    @else
+
+                        <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+                            Inactiva
+                        </span>
+
+                    @endif
+
+                </td>
+                @endif
+
+
+                <td class="px-5 py-4 text-right">
+
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarHerramienta({{ $herramienta->id }})" class="icon-button text-blue-600"
+                            title="Editar herramienta" aria-label="Editar herramienta {{ $herramienta->nombre }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $herramienta->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $herramienta->activo ? 'desactivar' : 'activar' }} la herramienta {{ $herramienta->nombre }}?"
+                            class="icon-button {{ $herramienta->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $herramienta->activo ? 'Desactivar herramienta' : 'Activar herramienta' }}"
+                            aria-label="{{ $herramienta->activo ? 'Desactivar' : 'Activar' }} herramienta {{ $herramienta->nombre }}"><x-icon name="power" /></button>
+                        <button type="button" wire:click="abrirHistorial({{ $herramienta->id }})" class="icon-button text-indigo-600"
+                            title="Ver historial" aria-label="Ver historial de {{ $herramienta->nombre }}"><x-icon name="history" /></button>
+                    </div>
+
+                </td>
+
+            </tr>
+
+        @empty
+
+            <tr>
+
+                <td
+                    colspan="{{ count($visibleColumns) + 1 }}"
+                    class="px-6 py-12 text-center text-gray-500"
+                >
+                    No se encontraron herramientas registradas.
+                </td>
+
+            </tr>
+
+        @endforelse
+
+        <x-slot:pagination>{{ $herramientas->links() }}</x-slot:pagination>
+    </x-data-table>
 
 
     {{-- Modal --}}
@@ -828,7 +729,7 @@
 
 
     {{-- Modal de historial de herramienta --}}
-    
+
 {{-- Modal de historial completo de herramienta --}}
 @if ($mostrarHistorial)
 

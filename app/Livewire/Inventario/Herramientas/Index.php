@@ -4,24 +4,110 @@ namespace App\Livewire\Inventario\Herramientas;
 
 use App\Models\Categoria;
 use App\Models\Herramienta;
-use App\Models\PrestamoDetalle;
 use App\Models\Marca;
-use App\Models\UnidadMedida;
 use App\Models\MovimientoInventario;
+use App\Models\PrestamoDetalle;
+use App\Models\UnidadMedida;
+use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Carbon;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Services\RegistrarAperturaInventario;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = [
+        'nombre' => 'Herramienta',
+        'categoria' => 'Categoría',
+        'tipo_control' => 'Control',
+        'codigo_interno' => 'Código',
+        'cantidad_actual' => 'Existencia',
+        'disponibilidad' => 'Disponibilidad',
+        'activo' => 'Estado',
+    ];
+
+    public array $visibleColumns = ['nombre', 'categoria', 'tipo_control', 'codigo_interno', 'cantidad_actual', 'disponibilidad', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroTipo', 'filtroEstado');
+        $this->resetPage();
+    }
+
+    /** @param Builder<Herramienta> $query */
+    protected function applyTableOrder(Builder $query): void
+    {
+        if ($this->sortColumn === '' && $this->sortDirection === '') {
+            $query->orderBy('nombre')->orderByDesc('herramientas.id');
+
+            return;
+        }
+        abort_unless(isset(self::COLUMNS[$this->sortColumn]) && in_array($this->sortDirection, ['asc', 'desc'], true), 422);
+        if ($this->sortColumn === 'disponibilidad') {
+            $pending = PrestamoDetalle::query()
+                ->selectRaw('COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0)')
+                ->whereColumn('herramienta_id', 'herramientas.id')->where('estado', 'prestado');
+            $sql = $pending->toSql();
+            $query->orderByRaw(
+                'CASE WHEN herramientas.activo = ? THEN 0 WHEN herramientas.cantidad_actual > ('.$sql.') THEN ROUND(herramientas.cantidad_actual - ('.$sql.'), 2) ELSE 0 END '.$this->sortDirection,
+                [false, ...$pending->getBindings(), ...$pending->getBindings()],
+            );
+        } elseif ($this->sortColumn === 'tipo_control') {
+            $query->orderByRaw("CASE WHEN herramientas.tipo_control = 'individual' THEN 0 ELSE 1 END ".$this->sortDirection);
+        } elseif ($this->sortColumn === 'activo') {
+            $query->orderBy('herramientas.activo', $this->sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            $column = match ($this->sortColumn) {
+                'categoria' => Categoria::select('nombre')->whereColumn('categorias.id', 'herramientas.categoria_id'),
+                default => 'herramientas.'.$this->sortColumn,
+            };
+            $query->orderBy($column, $this->sortDirection);
+        }
+        $query->orderByDesc('herramientas.id');
+    }
 
     public bool $mostrarHistorial = false;
 
@@ -256,7 +342,6 @@ class Index extends Component
                 return;
             }
 
-
             $categoria = DB::transaction(function () use ($nombre) {
 
                 $categoria = Categoria::create([
@@ -295,7 +380,6 @@ class Index extends Component
 
                 return;
             }
-
 
             $marca = DB::transaction(function () use ($nombre) {
 
@@ -354,7 +438,6 @@ class Index extends Component
                 return;
             }
 
-
             $unidad = DB::transaction(function () use (
                 $singular,
                 $plural,
@@ -367,8 +450,7 @@ class Index extends Component
                     'abreviatura' => $abreviatura !== ''
                         ? $abreviatura
                         : null,
-                    'permite_decimales' =>
-                    $this->nuevoPermiteDecimalesUnidad,
+                    'permite_decimales' => $this->nuevoPermiteDecimalesUnidad,
                     'activo' => true,
                     'creado_por' => Auth::id(),
                 ]);
@@ -512,7 +594,6 @@ class Index extends Component
         ];
     }
 
-
     public function guardarHerramienta(): void
     {
         $this->validate();
@@ -554,7 +635,7 @@ class Index extends Component
                     )
                     ->when(
                         ! $esCreacion,
-                        fn($query) => $query->where(
+                        fn ($query) => $query->where(
                             'id',
                             '!=',
                             $this->herramientaId
@@ -564,8 +645,7 @@ class Index extends Component
 
                 if ($codigoDuplicado) {
                     throw ValidationException::withMessages([
-                        'codigoInterno' =>
-                        'Ya existe una herramienta con este código interno.',
+                        'codigoInterno' => 'Ya existe una herramienta con este código interno.',
                     ]);
                 }
             }
@@ -584,8 +664,7 @@ class Index extends Component
                     )
                 ) {
                     throw ValidationException::withMessages([
-                        'stockMinimo' =>
-                        'La unidad de medida no permite cantidades decimales.',
+                        'stockMinimo' => 'La unidad de medida no permite cantidades decimales.',
                     ]);
                 }
             }
@@ -597,8 +676,7 @@ class Index extends Component
 
                 if ($this->tipoControl !== $herramienta->tipo_control) {
                     throw ValidationException::withMessages([
-                        'tipoControl' =>
-                        'El tipo de control no puede modificarse después del registro de la herramienta.',
+                        'tipoControl' => 'El tipo de control no puede modificarse después del registro de la herramienta.',
                     ]);
                 }
 
@@ -611,15 +689,13 @@ class Index extends Component
                     )
                     ->value('pendiente');
 
-
                 /* No permitir desactivar herramientas prestadas. */
                 if (
                     $cantidadPrestada > 0
                     && ! $this->activoHerramienta
                 ) {
                     throw ValidationException::withMessages([
-                        'activoHerramienta' =>
-                        'No puede desactivar una herramienta que tiene préstamos pendientes.',
+                        'activoHerramienta' => 'No puede desactivar una herramienta que tiene préstamos pendientes.',
                     ]);
                 }
 
@@ -635,8 +711,7 @@ class Index extends Component
                     )
                 ) {
                     throw ValidationException::withMessages([
-                        'unidadMedidaId' =>
-                        'La existencia o los préstamos pendientes contienen decimales incompatibles con esta unidad.',
+                        'unidadMedidaId' => 'La existencia o los préstamos pendientes contienen decimales incompatibles con esta unidad.',
                     ]);
                 }
             }
@@ -651,8 +726,7 @@ class Index extends Component
                     ? (int) $this->marcaId
                     : null,
 
-                'unidad_medida_id' =>
-                (int) $this->unidadMedidaId,
+                'unidad_medida_id' => (int) $this->unidadMedidaId,
 
                 'tipo_control' => $this->tipoControl,
 
@@ -660,20 +734,16 @@ class Index extends Component
                     ? $codigo
                     : null,
 
-                'stock_minimo' =>
-                $this->tipoControl === 'individual'
+                'stock_minimo' => $this->tipoControl === 'individual'
                     ? 0
                     : $stockMinimo,
 
-                'observaciones' =>
-                trim($this->observaciones) !== ''
+                'observaciones' => trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
 
                 'activo' => $this->activoHerramienta,
             ];
-
-
 
             if ($esCreacion) {
 
@@ -687,7 +757,7 @@ class Index extends Component
                     $herramienta->id,
                     $cantidadInicial,
                     'Apertura inicial de la herramienta: '
-                        . $herramienta->nombre
+                        .$herramienta->nombre
                 );
 
                 RegistrarAuditoria::creacion($herramienta, [
@@ -721,9 +791,6 @@ class Index extends Component
         $this->resetPage();
     }
 
-
-
-
     public function cambiarEstado(int $id): void
     {
         DB::transaction(function () use ($id) {
@@ -752,8 +819,7 @@ class Index extends Component
                 if ($tienePrestamosPendientes) {
 
                     throw ValidationException::withMessages([
-                        'estadoHerramienta' =>
-                        'No puede desactivar esta herramienta porque tiene préstamos pendientes de devolución.',
+                        'estadoHerramienta' => 'No puede desactivar esta herramienta porque tiene préstamos pendientes de devolución.',
                     ]);
                 }
             }
@@ -777,8 +843,6 @@ class Index extends Component
         }, 3);
     }
 
-
-
     public function abrirHistorial(int $id): void
     {
         $herramienta = Herramienta::findOrFail($id);
@@ -799,7 +863,6 @@ class Index extends Component
         $this->historialHerramientaNombre = '';
     }
 
-
     public function render()
     {
         $herramientas = Herramienta::query()
@@ -816,7 +879,7 @@ class Index extends Component
             ->when(
                 $this->buscar,
                 function ($query) {
-                    $buscar = '%' . trim($this->buscar) . '%';
+                    $buscar = '%'.trim($this->buscar).'%';
 
                     $query->where(function ($subQuery) use ($buscar) {
                         $subQuery
@@ -843,7 +906,7 @@ class Index extends Component
                     );
                 }
             )
-            ->orderBy('nombre')
+            ->tap(fn (Builder $query) => $this->applyTableOrder($query))
             ->paginate(10);
 
         /*
@@ -912,8 +975,6 @@ class Index extends Component
             ->where('activo', true)
             ->orderBy('nombre_singular')
             ->get();
-
-
 
         /*
 |--------------------------------------------------------------------------
@@ -1013,8 +1074,8 @@ class Index extends Component
                     'posterior' => null,
                     'responsable' => $prestamo->usuario?->name
                         ?? 'Usuario no disponible',
-                    'detalle' => 'Departamento: ' . $departamento
-                        . ' | Recibe: ' . $persona,
+                    'detalle' => 'Departamento: '.$departamento
+                        .' | Recibe: '.$persona,
                     'orden' => $prestamoDetalle->id,
                 ]);
 
@@ -1032,10 +1093,10 @@ class Index extends Component
                         'responsable' => $devolucion->usuario?->name
                             ?? 'Usuario no disponible',
                         'detalle' => 'Devolución del préstamo #'
-                            . $prestamo->id
-                            . (
+                            .$prestamo->id
+                            .(
                                 $devolucion->observaciones
-                                ? ' | ' . $devolucion->observaciones
+                                ? ' | '.$devolucion->observaciones
                                 : ''
                             ),
                         'orden' => $devolucion->id,
@@ -1063,7 +1124,7 @@ class Index extends Component
                         'responsable' => $prestamoDetalle->usuarioRecibe?->name
                             ?? 'Usuario no disponible',
                         'detalle' => 'Devolución registrada anteriormente'
-                            . ' | Préstamo #' . $prestamo->id,
+                            .' | Préstamo #'.$prestamo->id,
                         'orden' => $prestamoDetalle->id,
                     ]);
                 }
@@ -1087,8 +1148,6 @@ class Index extends Component
                 ->take(50)
                 ->values();
         }
-
-
 
         return view(
             'livewire.inventario.herramientas.index',

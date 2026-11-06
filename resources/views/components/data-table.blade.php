@@ -12,6 +12,7 @@
     'sortable' => true,
     'showActions' => true,
     'actionsLabel' => 'Acciones',
+    'defaultOrderLabel' => 'ingresos más recientes',
 ])
 
 @php
@@ -98,7 +99,7 @@
                                 aria-sort="{{ $sortable && $sortColumn === $column ? ($sortDirection === 'asc' ? 'ascending' : 'descending') : 'none' }}">
                                 @if ($sortable)
                                     <button type="button" wire:click="sortBy({{ \Illuminate\Support\Js::from($column) }})" class="inline-flex min-h-9 cursor-pointer items-center gap-2 whitespace-nowrap rounded hover:text-accent"
-                                        aria-label="Ordenar por {{ $label }}: {{ $sortColumn !== $column ? 'ascendente' : ($sortDirection === 'asc' ? 'descendente' : 'ingresos más recientes') }}">
+                                        aria-label="Ordenar por {{ $label }}: {{ $sortColumn !== $column ? 'ascendente' : ($sortDirection === 'asc' ? 'descendente' : $defaultOrderLabel) }}">
                                         {{ $label }}
                                         <x-icon :name="$sortColumn === $column ? ($sortDirection === 'asc' ? 'arrow-up' : 'arrow-down') : 'sort'" class="size-4 {{ $sortColumn === $column ? 'text-accent' : 'text-gray-400' }}" />
                                     </button>
