@@ -3,6 +3,7 @@
 namespace App\Livewire\Catalogos\Marcas;
 
 use App\Models\Marca;
+use App\Services\MarcasTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,51 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = MarcasTable::COLUMNS;
+
+    public array $visibleColumns = ['nombre', 'creado_por', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroEstado');
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -27,18 +73,15 @@ class Index extends Component
 
     public bool $activoMarca = true;
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
 
-
     public function updatingFiltroEstado(): void
     {
         $this->resetPage();
     }
-
 
     public function crearMarca(): void
     {
@@ -46,7 +89,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarMarca(int $id): void
     {
@@ -61,7 +103,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -71,14 +112,12 @@ class Index extends Component
         $this->resetFormulario();
     }
 
-
     private function resetFormulario(): void
     {
         $this->marcaId = null;
         $this->nombre = '';
         $this->activoMarca = true;
     }
-
 
     protected function rules(): array
     {
@@ -95,19 +134,14 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'nombre.required' =>
-            'El nombre de la marca es obligatorio.',
+            'nombre.required' => 'El nombre de la marca es obligatorio.',
 
-            'nombre.max' =>
-            'El nombre no puede superar los 100 caracteres.',
+            'nombre.max' => 'El nombre no puede superar los 100 caracteres.',
         ];
     }
-
-
 
     public function guardarMarca(): void
     {
@@ -141,7 +175,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->marcaId
@@ -204,10 +238,6 @@ class Index extends Component
         $this->resetPage();
     }
 
-
-
-
-
     public function cambiarEstado(int $id): void
     {
         $nuevoEstado = DB::transaction(function () use ($id) {
@@ -241,37 +271,14 @@ class Index extends Component
         );
     }
 
-
-
-
     public function render()
     {
-        $marcas = Marca::query()
-            ->with('creador')
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-                    $query->where(
-                        'nombre',
-                        'like',
-                        '%' . trim($this->buscar) . '%'
-                    );
-                }
-            )
-
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-
-            ->orderBy('nombre')
-            ->paginate(10);
+        $marcas = app(MarcasTable::class)->query([
+            'buscar' => $this->buscar,
+            'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         return view(
             'livewire.catalogos.marcas.index',

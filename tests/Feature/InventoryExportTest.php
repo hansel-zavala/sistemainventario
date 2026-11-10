@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
+use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
 use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
 use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Models\Categoria;
 use App\Models\Departamento;
 use App\Models\Herramienta;
 use App\Models\Insumo;
+use App\Models\Marca;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
 use App\Models\Tinta;
@@ -50,6 +52,9 @@ class InventoryExportTest extends TestCase
     #[TestWith(['tipos-equipo', 'csv'])]
     #[TestWith(['tipos-equipo', 'xlsx'])]
     #[TestWith(['tipos-equipo', 'print'])]
+    #[TestWith(['marcas', 'csv'])]
+    #[TestWith(['marcas', 'xlsx'])]
+    #[TestWith(['marcas', 'print'])]
     public function test_exports_include_all_matching_pages_dates_columns_and_order(string $module, string $format): void
     {
         $this->login(User::factory()->create(['activo' => true]));
@@ -69,7 +74,7 @@ class InventoryExportTest extends TestCase
             $this->item($module, ['nombre' => 'MATCH-WRONG-TYPE', 'aplica_a' => 'insumo', 'created_at' => '2026-01-15']);
         }
 
-        $prefix = in_array($module, ['categorias', 'tipos-equipo'], true) ? 'catalogos' : 'inventario';
+        $prefix = in_array($module, ['categorias', 'tipos-equipo', 'marcas'], true) ? 'catalogos' : 'inventario';
         $route = $prefix.'.'.$module.'.exportar';
         $response = $this->get(route($route, [
             'format' => $format, 'columns' => ['nombre'], 'buscar' => 'MATCH',
@@ -98,6 +103,7 @@ class InventoryExportTest extends TestCase
                 'tintas' => 'Tinta',
                 'categorias' => 'Categoría',
                 'tipos-equipo' => 'Tipo de equipo',
+                'marcas' => 'Marca',
             };
             $this->assertSame([$header], $rows[0]);
             $this->assertSame(['MATCH-11'], $rows[1]);
@@ -119,6 +125,20 @@ class InventoryExportTest extends TestCase
             ->call('setVisibleColumns', ['nombre'])
             ->assertDontSee('categorias-heading-creado_por', false)
             ->assertDontSee('categorias-export-column-creado_por', false)
+            ->assertSee('Acciones');
+    }
+
+    public function test_brands_keep_column_selection_in_sync_with_the_export_form(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Marca::factory()->create(['creado_por' => $user->id]);
+
+        Livewire::actingAs($user)->test(MarcasIndex::class)
+            ->assertSee('Columnas')->assertSee('Exportar')
+            ->assertSee(route('catalogos.marcas.exportar'))
+            ->call('setVisibleColumns', ['nombre'])
+            ->assertDontSee('marcas-heading-creado_por', false)
+            ->assertDontSee('marcas-export-column-creado_por', false)
             ->assertSee('Acciones');
     }
 
@@ -279,6 +299,7 @@ class InventoryExportTest extends TestCase
             'tintas' => Tinta::factory()->create($attributes),
             'categorias' => Categoria::factory()->create($attributes),
             'tipos-equipo' => TipoEquipo::factory()->create($attributes),
+            'marcas' => Marca::factory()->create($attributes),
         };
     }
 
