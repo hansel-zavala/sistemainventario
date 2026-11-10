@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
+use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
 use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Models\Categoria;
 use App\Models\Departamento;
@@ -11,6 +12,7 @@ use App\Models\Insumo;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
 use App\Models\Tinta;
+use App\Models\TipoEquipo;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -45,6 +47,9 @@ class InventoryExportTest extends TestCase
     #[TestWith(['categorias', 'csv'])]
     #[TestWith(['categorias', 'xlsx'])]
     #[TestWith(['categorias', 'print'])]
+    #[TestWith(['tipos-equipo', 'csv'])]
+    #[TestWith(['tipos-equipo', 'xlsx'])]
+    #[TestWith(['tipos-equipo', 'print'])]
     public function test_exports_include_all_matching_pages_dates_columns_and_order(string $module, string $format): void
     {
         $this->login(User::factory()->create(['activo' => true]));
@@ -64,7 +69,8 @@ class InventoryExportTest extends TestCase
             $this->item($module, ['nombre' => 'MATCH-WRONG-TYPE', 'aplica_a' => 'insumo', 'created_at' => '2026-01-15']);
         }
 
-        $route = $module === 'categorias' ? 'catalogos.categorias.exportar' : 'inventario.'.$module.'.exportar';
+        $prefix = in_array($module, ['categorias', 'tipos-equipo'], true) ? 'catalogos' : 'inventario';
+        $route = $prefix.'.'.$module.'.exportar';
         $response = $this->get(route($route, [
             'format' => $format, 'columns' => ['nombre'], 'buscar' => 'MATCH',
             'filtroEstado' => 'activo', ...($module === 'herramientas' ? ['filtroTipo' => 'cantidad'] : []),
@@ -91,6 +97,7 @@ class InventoryExportTest extends TestCase
                 'insumos' => 'Insumo',
                 'tintas' => 'Tinta',
                 'categorias' => 'Categoría',
+                'tipos-equipo' => 'Tipo de equipo',
             };
             $this->assertSame([$header], $rows[0]);
             $this->assertSame(['MATCH-11'], $rows[1]);
@@ -113,6 +120,22 @@ class InventoryExportTest extends TestCase
             ->assertDontSee('categorias-heading-creado_por', false)
             ->assertDontSee('categorias-export-column-creado_por', false)
             ->assertSee('Acciones');
+    }
+
+    public function test_equipment_types_sort_by_creator_and_export_only_visible_columns(): void
+    {
+        $zulu = User::factory()->create(['name' => 'Zulu', 'activo' => true]);
+        $alpha = User::factory()->create(['name' => 'Alpha']);
+        $last = TipoEquipo::factory()->create(['creado_por' => $zulu->id]);
+        $first = TipoEquipo::factory()->create(['creado_por' => $alpha->id]);
+
+        Livewire::actingAs($zulu)->test(TiposEquipoIndex::class)
+            ->assertSee('Columnas')->assertSee('Exportar')
+            ->call('sortBy', 'creado_por')
+            ->assertViewHas('tiposEquipo', fn ($rows): bool => $rows->pluck('id')->all() === [$first->id, $last->id])
+            ->call('setVisibleColumns', ['nombre'])
+            ->assertDontSee('tipos-equipo-heading-creado_por', false)
+            ->assertDontSee('tipos-equipo-export-column-creado_por', false);
     }
 
     public function test_ink_table_sorts_fractional_stock_and_keeps_export_columns_in_sync(): void
@@ -255,6 +278,7 @@ class InventoryExportTest extends TestCase
             'insumos' => Insumo::factory()->create($attributes),
             'tintas' => Tinta::factory()->create($attributes),
             'categorias' => Categoria::factory()->create($attributes),
+            'tipos-equipo' => TipoEquipo::factory()->create($attributes),
         };
     }
 

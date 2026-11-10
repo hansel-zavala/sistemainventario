@@ -7,6 +7,7 @@ use App\Services\HerramientasTable;
 use App\Services\InsumosTable;
 use App\Services\TableExport;
 use App\Services\TintasTable;
+use App\Services\TiposEquipoTable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -21,6 +22,7 @@ class InventoryExportController extends Controller
             'insumos' => [app(InsumosTable::class), 'Insumos'],
             'tintas' => [app(TintasTable::class), 'Tintas'],
             'categorias' => [app(CategoriasTable::class), 'Categorías'],
+            'tipos-equipo' => [app(TiposEquipoTable::class), 'Tipos de equipo'],
             default => abort(404),
         };
         $filters = $table->validate($request->query());

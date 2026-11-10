@@ -4,6 +4,7 @@ namespace App\Livewire\Catalogos\TiposEquipo;
 
 use App\Models\TipoEquipo;
 use App\Services\RegistrarAuditoria;
+use App\Services\TiposEquipoTable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -14,6 +15,51 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = TiposEquipoTable::COLUMNS;
+
+    public array $visibleColumns = ['nombre', 'creado_por', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroEstado');
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -27,18 +73,15 @@ class Index extends Component
 
     public bool $activoTipoEquipo = true;
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
 
-
     public function updatingFiltroEstado(): void
     {
         $this->resetPage();
     }
-
 
     public function crearTipoEquipo(): void
     {
@@ -46,7 +89,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarTipoEquipo(int $id): void
     {
@@ -61,7 +103,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -71,14 +112,12 @@ class Index extends Component
         $this->resetFormulario();
     }
 
-
     private function resetFormulario(): void
     {
         $this->tipoEquipoId = null;
         $this->nombre = '';
         $this->activoTipoEquipo = true;
     }
-
 
     protected function rules(): array
     {
@@ -95,19 +134,14 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'nombre.required' =>
-            'El nombre del tipo de equipo es obligatorio.',
+            'nombre.required' => 'El nombre del tipo de equipo es obligatorio.',
 
-            'nombre.max' =>
-            'El nombre no puede superar los 100 caracteres.',
+            'nombre.max' => 'El nombre no puede superar los 100 caracteres.',
         ];
     }
-
-
 
     public function guardarTipoEquipo(): void
     {
@@ -142,7 +176,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->tipoEquipoId
@@ -163,7 +197,6 @@ class Index extends Component
 
             /* Crear tipo de equipo */
 
-
             if ($esCreacion) {
                 $datos['creado_por'] = Auth::id();
                 $tipoEquipo = TipoEquipo::create($datos);
@@ -175,6 +208,7 @@ class Index extends Component
                 $tipoEquipo->fill($datos);
                 RegistrarAuditoria::guardarActualizacion($tipoEquipo);
             }
+
             return true;
         }, 3);
 
@@ -200,10 +234,6 @@ class Index extends Component
 
         $this->resetPage();
     }
-
-
-
-
 
     public function cambiarEstado(int $id): void
     {
@@ -244,37 +274,14 @@ class Index extends Component
         );
     }
 
-
-
-
     public function render()
     {
-        $tiposEquipo = TipoEquipo::query()
-            ->with('creador')
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-                    $query->where(
-                        'nombre',
-                        'like',
-                        '%' . trim($this->buscar) . '%'
-                    );
-                }
-            )
-
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-
-            ->orderBy('nombre')
-            ->paginate(10);
+        $tiposEquipo = app(TiposEquipoTable::class)->query([
+            'buscar' => $this->buscar,
+            'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         return view(
             'livewire.catalogos.tipos-equipo.index',
