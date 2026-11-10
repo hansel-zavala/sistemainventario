@@ -32,182 +32,70 @@
     @endif
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    <x-data-table
+        id="departamentos"
+        label="Tabla de departamentos"
+        :columns="\App\Services\DepartamentosTable::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar departamento"
+        search-placeholder="Nombre o sigla del departamento..."
+        default-order-label="orden por nombre"
+    >
+        <x-slot:export>
+            <x-table-export id="departamentos" :action="route('catalogos.departamentos.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado]" />
+        </x-slot:export>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Nombre o sigla..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-            </div>
-
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="activo">
-                        Activos
-                    </option>
-
-                    <option value="inactivo">
-                        Inactivos
-                    </option>
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="activo">Activos</option>
+                    <option value="inactivo">Inactivos</option>
                 </select>
-            </div>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
 
-        </div>
+        <x-slot:summary>
+            {{ $departamentos->total() }} departamentos · {{ $sortColumn ? 'Orden: '.\App\Services\DepartamentosTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+        </x-slot:summary>
 
-    </div>
+        @forelse ($departamentos as $departamento)
+            <tr wire:key="departamentos-row-{{ $departamento->id }}" class="hover:bg-canvas/60">
+                @foreach (\App\Services\DepartamentosTable::values($departamento) as $column => $value)
+                    @continue(! in_array($column, $visibleColumns, true))
+                    <td wire:key="departamentos-cell-{{ $departamento->id }}-{{ $column }}" class="px-4 py-3 text-ink">
+                        @if ($column === 'activo')
+                            <span @class(['rounded-full px-3 py-1 text-xs font-medium', 'bg-green-50 text-green-700' => $departamento->activo, 'bg-red-50 text-red-700' => ! $departamento->activo])>
+                                {{ $value }}
+                            </span>
+                        @else
+                            {{ $value }}
+                        @endif
+                    </td>
+                @endforeach
+                <td class="px-4 py-2 text-right">
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarDepartamento({{ $departamento->id }})" class="icon-button text-blue-600"
+                            title="Editar departamento" aria-label="Editar departamento {{ $departamento->nombre }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $departamento->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $departamento->activo ? 'desactivar' : 'activar' }} el departamento {{ $departamento->nombre }}?"
+                            class="icon-button {{ $departamento->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $departamento->activo ? 'Desactivar departamento' : 'Activar departamento' }}"
+                            aria-label="{{ $departamento->activo ? 'Desactivar' : 'Activar' }} departamento {{ $departamento->nombre }}"><x-icon name="power" /></button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron departamentos registrados.</td></tr>
+        @endforelse
 
-
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-
-        <div class="overflow-x-auto">
-
-            <table class="w-full">
-
-                <thead class="bg-gray-50">
-
-                    <tr>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Departamento
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Sigla
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Creado por
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
-
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($departamentos as $departamento)
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-6 py-4 font-medium text-gray-800">
-                                {{ $departamento->nombre }}
-                            </td>
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $departamento->sigla ?? '—' }}
-                            </td>
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $departamento->creador?->name ?? 'No disponible' }}
-                            </td>
-
-                            <td class="px-6 py-4">
-
-                                @if ($departamento->activo)
-
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Activo
-                                    </span>
-
-                                @else
-
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                        Inactivo
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-                            <td class="px-6 py-4 text-right">
-
-                                <div class="flex justify-end gap-3">
-
-                                    <button
-                                        type="button"
-                                        wire:click="editarDepartamento({{ $departamento->id }})"
-                                        class="font-medium text-blue-600 hover:text-blue-800"
-                                    >
-                                        Editar
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="cambiarEstado({{ $departamento->id }})"
-                                        class="{{ $departamento->activo
-                                            ? 'font-medium text-red-600 hover:text-red-800'
-                                            : 'font-medium text-green-600 hover:text-green-800'
-                                        }}"
-                                    >
-                                        {{ $departamento->activo
-                                            ? 'Desactivar'
-                                            : 'Activar'
-                                        }}
-                                    </button>
-
-                                </div>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-                            <td
-                                colspan="5"
-                                class="px-6 py-10 text-center text-gray-500"
-                            >
-                                No se encontraron departamentos.
-                            </td>
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $departamentos->links() }}
-        </div>
-
-    </div>
-
+        <x-slot:pagination>{{ $departamentos->links() }}</x-slot:pagination>
+    </x-data-table>
 
     @if ($mostrarModal)
 

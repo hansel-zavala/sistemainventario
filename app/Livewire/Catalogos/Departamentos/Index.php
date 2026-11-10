@@ -3,6 +3,7 @@
 namespace App\Livewire\Catalogos\Departamentos;
 
 use App\Models\Departamento;
+use App\Services\DepartamentosTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,51 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = DepartamentosTable::COLUMNS;
+
+    public array $visibleColumns = ['nombre', 'sigla', 'creado_por', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroEstado');
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -29,18 +75,15 @@ class Index extends Component
 
     public bool $activoDepartamento = true;
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
 
-
     public function updatingFiltroEstado(): void
     {
         $this->resetPage();
     }
-
 
     public function crearDepartamento(): void
     {
@@ -48,7 +91,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarDepartamento(int $id): void
     {
@@ -64,7 +106,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -74,7 +115,6 @@ class Index extends Component
         $this->resetFormulario();
     }
 
-
     private function resetFormulario(): void
     {
         $this->departamentoId = null;
@@ -82,7 +122,6 @@ class Index extends Component
         $this->sigla = '';
         $this->activoDepartamento = true;
     }
-
 
     protected function rules(): array
     {
@@ -105,22 +144,16 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'nombre.required' =>
-            'El nombre del departamento es obligatorio.',
+            'nombre.required' => 'El nombre del departamento es obligatorio.',
 
-            'nombre.max' =>
-            'El nombre no puede superar los 150 caracteres.',
+            'nombre.max' => 'El nombre no puede superar los 150 caracteres.',
 
-            'sigla.max' =>
-            'La sigla no puede superar los 20 caracteres.',
+            'sigla.max' => 'La sigla no puede superar los 20 caracteres.',
         ];
     }
-
-
 
     public function guardarDepartamento(): void
     {
@@ -157,7 +190,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->departamentoId
@@ -183,7 +216,6 @@ class Index extends Component
 
             /* Crear departamento */
 
-
             if ($esCreacion) {
                 $datos['creado_por'] = Auth::id();
                 $departamento = Departamento::create($datos);
@@ -196,7 +228,6 @@ class Index extends Component
                 $departamento->fill($datos);
                 RegistrarAuditoria::guardarActualizacion($departamento);
             }
-
 
             return true;
         }, 3);
@@ -222,10 +253,6 @@ class Index extends Component
         $this->cerrarModal();
         $this->resetPage();
     }
-
-
-
-
 
     public function cambiarEstado(int $id): void
     {
@@ -266,45 +293,14 @@ class Index extends Component
         );
     }
 
-
-
-
     public function render()
     {
-        $departamentos = Departamento::query()
-            ->with('creador')
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-                    $query->where(function ($subQuery) {
-                        $subQuery
-                            ->where(
-                                'nombre',
-                                'like',
-                                '%' . trim($this->buscar) . '%'
-                            )
-                            ->orWhere(
-                                'sigla',
-                                'like',
-                                '%' . trim($this->buscar) . '%'
-                            );
-                    });
-                }
-            )
-
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-
-            ->orderBy('nombre')
-            ->paginate(10);
+        $departamentos = app(DepartamentosTable::class)->query([
+            'buscar' => $this->buscar,
+            'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         return view(
             'livewire.catalogos.departamentos.index',
