@@ -25,75 +25,6 @@
     </div>
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
-
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Nombre o correo..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-            </div>
-
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Rol
-                </label>
-
-                <select
-                    wire:model.live="rol"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="Administrador">
-                        Administrador
-                    </option>
-
-                    <option value="Técnico">
-                        Técnico
-                    </option>
-                </select>
-            </div>
-
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="estado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="activo">
-                        Activos
-                    </option>
-
-                    <option value="inactivo">
-                        Inactivos
-                    </option>
-                </select>
-            </div>
-
-        </div>
-
-    </div>
-
     @if (session()->has('mensaje'))
 
             <div class="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-700">
@@ -105,118 +36,74 @@
     @endif
 
 
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
+    <x-data-table
+        id="usuarios"
+        label="Tabla de usuarios"
+        :columns="\App\Services\UsuariosTable::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar usuario"
+        search-placeholder="Nombre o correo..."
+        default-order-label="orden por nombre"
+    >
+        <x-slot:export>
+            <x-table-export id="usuarios" :action="route('administracion.usuarios.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['estado' => $estado, 'rol' => $rol]" />
+        </x-slot:export>
 
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Rol
+                <select wire:model.live="rol" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="Administrador">Administrador</option>
+                    <option value="Técnico">Técnico</option>
+                </select>
+            </label>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="estado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="activo">Activos</option>
+                    <option value="inactivo">Inactivos</option>
+                </select>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
 
-        <div class="overflow-x-auto">
+        <x-slot:summary>
+            {{ $usuarios->total() }} usuarios · {{ $sortColumn ? 'Orden: '.\App\Services\UsuariosTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+        </x-slot:summary>
 
-            <table class="w-full">
+        @forelse ($usuarios as $usuario)
+            <tr wire:key="usuarios-row-{{ $usuario->id }}" class="hover:bg-canvas/60">
+                @foreach (\App\Services\UsuariosTable::values($usuario) as $column => $value)
+                    @continue(! in_array($column, $visibleColumns, true))
+                    <td wire:key="usuarios-cell-{{ $usuario->id }}-{{ $column }}" class="px-4 py-3 text-ink">
+                        @if ($column === 'activo')
+                            <span @class(['rounded-full px-3 py-1 text-xs font-medium', 'bg-green-50 text-green-700' => $usuario->activo, 'bg-red-50 text-red-700' => ! $usuario->activo])>
+                                {{ $value }}
+                            </span>
+                        @elseif ($column === 'rol')
+                            <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">{{ $value }}</span>
+                        @else
+                            {{ $value }}
+                        @endif
+                    </td>
+                @endforeach
+                <td class="px-4 py-2 text-right">
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarUsuario({{ $usuario->id }})" class="icon-button text-blue-600"
+                            title="Editar usuario" aria-label="Editar usuario {{ $usuario->name }}"><x-icon name="edit" /></button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron usuarios registrados.</td></tr>
+        @endforelse
 
-                <thead class="bg-gray-50">
-                    <tr>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Usuario
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Correo
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Rol
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
-
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-                </thead>
-
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($usuarios as $usuario)
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-6 py-4 font-medium text-gray-800">
-                                {{ $usuario->name }}
-                            </td>
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $usuario->email }}
-                            </td>
-
-                            <td class="px-6 py-4">
-
-                                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                                    {{ $usuario->getRoleNames()->first() ?? 'Sin rol' }}
-                                </span>
-
-                            </td>
-
-                            <td class="px-6 py-4">
-
-                                @if ($usuario->activo)
-
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Activo
-                                    </span>
-
-                                @else
-
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                        Inactivo
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-                            <td class="px-6 py-4 text-right">
-
-                                <button
-                                    type="button"
-                                    wire:click="editarUsuario({{ $usuario->id }})"
-                                    class="font-medium text-blue-600 hover:text-blue-800"
-                                >
-                                    Editar
-                                </button>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-                            <td
-                                colspan="5"
-                                class="px-6 py-10 text-center text-gray-500"
-                            >
-                                No se encontraron usuarios.
-                            </td>
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $usuarios->links() }}
-        </div>
-
-    </div>
+        <x-slot:pagination>{{ $usuarios->links() }}</x-slot:pagination>
+    </x-data-table>
 
     @if ($mostrarModal)
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
 use App\Livewire\Catalogos\Departamentos\Index as DepartamentosIndex;
 use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
@@ -25,11 +26,83 @@ use Livewire\Livewire;
 use OpenSpout\Reader\XLSX\Reader;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\TestWith;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class InventoryExportTest extends TestCase
 {
     use LazilyRefreshDatabase;
+
+    #[TestWith(['csv'])]
+    #[TestWith(['xlsx'])]
+    #[TestWith(['print'])]
+    public function test_administrator_exports_only_selected_user_data(string $format): void
+    {
+        $adminRole = Role::create(['name' => 'Administrador', 'guard_name' => 'web']);
+        $techRole = Role::create(['name' => 'Técnico', 'guard_name' => 'web']);
+        $admin = User::factory()->create(['activo' => true]);
+        $admin->assignRole($adminRole);
+        $this->login($admin);
+        $tech = User::factory()->create(['name' => 'Operator', 'email' => 'match@example.test', 'activo' => true, 'created_at' => '2026-01-31 23:59:59']);
+        $tech->assignRole($techRole);
+        $outside = User::factory()->create(['name' => 'Outside', 'email' => 'match-outside@example.test', 'activo' => true, 'created_at' => '2026-02-01']);
+        $outside->assignRole($techRole);
+        User::factory()->create(['name' => 'Wrong role', 'email' => 'match-role@example.test', 'activo' => true, 'created_at' => '2026-01-15'])->assignRole($adminRole);
+        User::factory()->create(['name' => 'Inactive', 'email' => 'match-inactive@example.test', 'activo' => false, 'created_at' => '2026-01-15'])->assignRole($techRole);
+
+        $response = $this->get(route('administracion.usuarios.exportar', [
+            'format' => $format, 'columns' => ['name', 'rol'], 'buscar' => 'match',
+            'rol' => 'Técnico', 'estado' => 'activo', 'hasta' => '2026-01-31',
+        ]))->assertOk();
+
+        if ($format === 'print') {
+            $response->assertSee('Operator')->assertSee('Técnico')->assertDontSee('Outside')->assertDontSee('Wrong role')
+                ->assertDontSee('Inactive')->assertDontSee('match@example.test')->assertDontSee($tech->password);
+        } elseif ($format === 'xlsx') {
+            $this->assertSame([['Usuario', 'Rol'], ['Operator', 'Técnico']], $this->readXlsx($response->streamedContent()));
+        } else {
+            $this->assertSame("\xEF\xBB\xBFUsuario,Rol\nOperator,Técnico\n", str_replace("\r\n", "\n", $response->streamedContent()));
+        }
+    }
+
+    public function test_user_exports_require_an_administrator(): void
+    {
+        $url = route('administracion.usuarios.exportar', ['columns' => ['name']]);
+        $this->get($url)->assertRedirect(route('login'));
+        $tech = User::factory()->create(['activo' => true]);
+        $tech->assignRole(Role::create(['name' => 'Técnico', 'guard_name' => 'web']));
+        $this->post(route('login.store'), ['email' => $tech->email, 'password' => 'password'])->assertRedirect($url);
+        $this->get($url)->assertForbidden();
+    }
+
+    public function test_user_exports_reject_sensitive_columns(): void
+    {
+        $admin = User::factory()->create(['activo' => true]);
+        $admin->assignRole(Role::create(['name' => 'Administrador', 'guard_name' => 'web']));
+        $this->login($admin);
+
+        $this->getJson(route('administracion.usuarios.exportar', ['columns' => ['password', 'remember_token']]))
+            ->assertUnprocessable()->assertJsonValidationErrors(['columns.0', 'columns.1']);
+    }
+
+    public function test_users_table_sorts_by_role_and_hides_unselected_export_columns(): void
+    {
+        $techRole = Role::create(['name' => 'Técnico', 'guard_name' => 'web']);
+        $adminRole = Role::create(['name' => 'Administrador', 'guard_name' => 'web']);
+        $tech = User::factory()->create(['name' => 'Alpha', 'activo' => true]);
+        $tech->assignRole($techRole);
+        $admin = User::factory()->create(['name' => 'Zulu', 'activo' => true]);
+        $admin->assignRole($adminRole);
+
+        Livewire::actingAs($admin)->test(UsuariosIndex::class)
+            ->assertSee('Columnas')->assertSee('Exportar')
+            ->call('sortBy', 'rol')
+            ->assertViewHas('usuarios', fn ($rows): bool => $rows->pluck('id')->all() === [$admin->id, $tech->id])
+            ->call('setVisibleColumns', ['name'])
+            ->assertDontSee('usuarios-heading-email', false)
+            ->assertDontSee('usuarios-export-column-email', false)
+            ->assertSee('Editar usuario Zulu');
+    }
 
     /** @return array<string, mixed> */
     protected function migrateFreshUsing(): array

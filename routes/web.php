@@ -88,6 +88,9 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('role:Administrador')->group(function () {
 
+        Route::get('/administracion/usuarios/exportar', InventoryExportController::class)
+            ->defaults('module', 'usuarios')->name('administracion.usuarios.exportar');
+
         Route::get(
             '/administracion/usuarios',
             UsuariosIndex::class

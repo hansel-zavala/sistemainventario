@@ -4,6 +4,7 @@ namespace App\Livewire\Administracion\Usuarios;
 
 use App\Models\User;
 use App\Services\RegistrarAuditoria;
+use App\Services\UsuariosTable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +16,51 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = UsuariosTable::COLUMNS;
+
+    public array $visibleColumns = ['name', 'email', 'rol', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'rol', 'estado');
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -110,7 +156,7 @@ class Index extends Component
                 'required',
                 'email',
                 'max:150',
-                'unique:users,email,' . $this->usuarioId,
+                'unique:users,email,'.$this->usuarioId,
             ],
 
             'rolUsuario' => [
@@ -165,7 +211,6 @@ class Index extends Component
             'rolUsuario.in' => 'El rol seleccionado no es válido.',
         ];
     }
-
 
     public function guardarUsuario(): void
     {
@@ -227,8 +272,7 @@ class Index extends Component
                 && ! $this->activoUsuario
             ) {
                 throw ValidationException::withMessages([
-                    'activoUsuario' =>
-                    'No puede desactivar su propio usuario.',
+                    'activoUsuario' => 'No puede desactivar su propio usuario.',
                 ]);
             }
 
@@ -254,8 +298,7 @@ class Index extends Component
 
                     if ($otrosAdministradoresActivos === 0) {
                         throw ValidationException::withMessages([
-                            'rolUsuario' =>
-                            'Debe existir al menos un Administrador activo en el sistema.',
+                            'rolUsuario' => 'Debe existir al menos un Administrador activo en el sistema.',
                         ]);
                     }
                 }
@@ -308,41 +351,15 @@ class Index extends Component
         $this->resetPage();
     }
 
-
     public function render()
     {
-        $usuarios = User::query()
-            ->with('roles')
-
-            ->when($this->buscar, function ($query) {
-                $query->where(function ($subQuery) {
-                    $subQuery
-                        ->where(
-                            'name',
-                            'like',
-                            '%' . $this->buscar . '%'
-                        )
-                        ->orWhere(
-                            'email',
-                            'like',
-                            '%' . $this->buscar . '%'
-                        );
-                });
-            })
-
-            ->when($this->rol, function ($query) {
-                $query->role($this->rol);
-            })
-
-            ->when($this->estado !== '', function ($query) {
-                $query->where(
-                    'activo',
-                    $this->estado === 'activo'
-                );
-            })
-
-            ->orderBy('name')
-            ->paginate(10);
+        $usuarios = app(UsuariosTable::class)->query([
+            'buscar' => $this->buscar,
+            'rol' => $this->rol,
+            'estado' => $this->estado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         return view(
             'livewire.administracion.usuarios.index',
