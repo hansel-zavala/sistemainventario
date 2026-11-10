@@ -10,7 +10,7 @@ use App\Models\PrestamoDetalle;
 use App\Models\UnidadMedida;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
-use Illuminate\Database\Eloquent\Builder;
+use App\Services\HerramientasTable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -24,15 +24,7 @@ class Index extends Component
 {
     use WithPagination;
 
-    public const COLUMNS = [
-        'nombre' => 'Herramienta',
-        'categoria' => 'Categoría',
-        'tipo_control' => 'Control',
-        'codigo_interno' => 'Código',
-        'cantidad_actual' => 'Existencia',
-        'disponibilidad' => 'Disponibilidad',
-        'activo' => 'Estado',
-    ];
+    public const COLUMNS = HerramientasTable::COLUMNS;
 
     public array $visibleColumns = ['nombre', 'categoria', 'tipo_control', 'codigo_interno', 'cantidad_actual', 'disponibilidad', 'activo'];
 
@@ -75,38 +67,6 @@ class Index extends Component
     {
         $this->reset('buscar', 'filtroTipo', 'filtroEstado');
         $this->resetPage();
-    }
-
-    /** @param Builder<Herramienta> $query */
-    protected function applyTableOrder(Builder $query): void
-    {
-        if ($this->sortColumn === '' && $this->sortDirection === '') {
-            $query->orderBy('nombre')->orderByDesc('herramientas.id');
-
-            return;
-        }
-        abort_unless(isset(self::COLUMNS[$this->sortColumn]) && in_array($this->sortDirection, ['asc', 'desc'], true), 422);
-        if ($this->sortColumn === 'disponibilidad') {
-            $pending = PrestamoDetalle::query()
-                ->selectRaw('COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0)')
-                ->whereColumn('herramienta_id', 'herramientas.id')->where('estado', 'prestado');
-            $sql = $pending->toSql();
-            $query->orderByRaw(
-                'CASE WHEN herramientas.activo = ? THEN 0 WHEN herramientas.cantidad_actual > ('.$sql.') THEN ROUND(herramientas.cantidad_actual - ('.$sql.'), 2) ELSE 0 END '.$this->sortDirection,
-                [false, ...$pending->getBindings(), ...$pending->getBindings()],
-            );
-        } elseif ($this->sortColumn === 'tipo_control') {
-            $query->orderByRaw("CASE WHEN herramientas.tipo_control = 'individual' THEN 0 ELSE 1 END ".$this->sortDirection);
-        } elseif ($this->sortColumn === 'activo') {
-            $query->orderBy('herramientas.activo', $this->sortDirection === 'asc' ? 'desc' : 'asc');
-        } else {
-            $column = match ($this->sortColumn) {
-                'categoria' => Categoria::select('nombre')->whereColumn('categorias.id', 'herramientas.categoria_id'),
-                default => 'herramientas.'.$this->sortColumn,
-            };
-            $query->orderBy($column, $this->sortDirection);
-        }
-        $query->orderByDesc('herramientas.id');
     }
 
     public bool $mostrarHistorial = false;
@@ -865,99 +825,14 @@ class Index extends Component
 
     public function render()
     {
-        $herramientas = Herramienta::query()
-            ->withExists([
-                'prestamos as esta_prestada' => function ($query) {
-                    $query->where('estado', 'prestado');
-                },
-            ])
-            ->with([
-                'categoria',
-                'marca',
-                'unidadMedida',
-            ])
-            ->when(
-                $this->buscar,
-                function ($query) {
-                    $buscar = '%'.trim($this->buscar).'%';
+        $herramientas = app(HerramientasTable::class)->query([
+            'buscar' => $this->buscar, 'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn, 'sortDirection' => $this->sortDirection,
+            'filtroTipo' => $this->filtroTipo,
+        ])->paginate(10);
 
-                    $query->where(function ($subQuery) use ($buscar) {
-                        $subQuery
-                            ->where('nombre', 'like', $buscar)
-                            ->orWhere('codigo_interno', 'like', $buscar)
-                            ->orWhereHas('marca', function ($marcaQuery) use ($buscar) {
-                                $marcaQuery->where('nombre', 'like', $buscar);
-                            });
-                    });
-                }
-            )
-            ->when(
-                $this->filtroTipo,
-                function ($query) {
-                    $query->where('tipo_control', $this->filtroTipo);
-                }
-            )
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-            ->tap(fn (Builder $query) => $this->applyTableOrder($query))
-            ->paginate(10);
-
-        /*
-    |--------------------------------------------------------------------------
-    | Calcular préstamos pendientes de las herramientas de esta página
-    |--------------------------------------------------------------------------
-    */
-        $idsHerramientas = $herramientas->getCollection()
-            ->pluck('id')
-            ->all();
-
-        $pendientes = PrestamoDetalle::query()
-            ->whereIn('herramienta_id', $idsHerramientas)
-            ->where('estado', 'prestado')
-            ->select('herramienta_id')
-            ->selectRaw(
-                'COALESCE(SUM(cantidad_prestada - cantidad_devuelta), 0) AS total_pendiente'
-            )
-            ->groupBy('herramienta_id')
-            ->pluck('total_pendiente', 'herramienta_id');
-
-        /*
-    |--------------------------------------------------------------------------
-    | Agregar cantidades calculadas a los resultados
-    |--------------------------------------------------------------------------
-    */
         foreach ($herramientas as $herramienta) {
-
-            $cantidadPrestada = round(
-                (float) ($pendientes[$herramienta->id] ?? 0),
-                2
-            );
-
-            $cantidadDisponible = max(
-                0,
-                round(
-                    (float) $herramienta->cantidad_actual
-                        - $cantidadPrestada,
-                    2
-                )
-            );
-
-            $herramienta->setAttribute(
-                'cantidad_prestada_pendiente',
-                $cantidadPrestada
-            );
-
-            $herramienta->setAttribute(
-                'cantidad_disponible_calculada',
-                $cantidadDisponible
-            );
+            $herramienta->setAttribute('cantidad_disponible_calculada', HerramientasTable::available($herramienta));
         }
 
         $categorias = Categoria::query()

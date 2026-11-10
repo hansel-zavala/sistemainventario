@@ -31,7 +31,8 @@ class HerramientasTableTest extends TestCase
         $tool = Herramienta::factory()->create(['nombre' => 'Drill']);
 
         Livewire::actingAs(User::factory()->create(['activo' => true]))->test(Index::class)
-            ->assertSee('herramientas.visibleColumns', false)->assertSee('Columnas')->assertDontSee('Exportar')
+            ->assertSee('herramientas.visibleColumns', false)->assertSee('Columnas')->assertSee('Exportar')
+            ->assertSee(route('inventario.herramientas.exportar'))
             ->assertSee('herramientas-heading-cantidad_actual', false)->assertSee('herramientas-heading-activo', false)
             ->assertSee('Editar herramienta Drill')->assertSee('Desactivar herramienta Drill')->assertSee('Ver historial de Drill')
             ->call('editarHerramienta', $tool->id)->assertSet('herramientaId', $tool->id)->assertSet('mostrarModal', true)

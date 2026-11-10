@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordRecoveryController;
 use App\Http\Controllers\EquiposExportController;
+use App\Http\Controllers\InventoryExportController;
 use App\Http\Controllers\PerfilController;
 use App\Livewire\Administracion\Auditorias\Index as AuditoriasIndex;
 use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
@@ -47,6 +48,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/inventario/equipos/exportar', EquiposExportController::class)
         ->name('inventario.equipos.exportar');
+
+    Route::get('/inventario/herramientas/exportar', InventoryExportController::class)
+        ->defaults('module', 'herramientas')->name('inventario.herramientas.exportar');
+
+    Route::get('/inventario/insumos/exportar', InventoryExportController::class)
+        ->defaults('module', 'insumos')->name('inventario.insumos.exportar');
 
     Route::get('/mi-perfil', [PerfilController::class, 'show'])->name('perfil.show');
     Route::patch('/mi-perfil', [PerfilController::class, 'update'])->name('perfil.update');

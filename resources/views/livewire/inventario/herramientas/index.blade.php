@@ -48,6 +48,11 @@
         search-placeholder="Nombre, código o marca..."
         default-order-label="orden por nombre"
     >
+        <x-slot:export>
+            <x-table-export id="herramientas" :action="route('inventario.herramientas.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado, 'filtroTipo' => $filtroTipo]" />
+        </x-slot:export>
         <x-slot:filters>
             <label class="min-w-40 flex-1 text-xs font-medium text-muted">Tipo de control
                 <select wire:model.live="filtroTipo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">

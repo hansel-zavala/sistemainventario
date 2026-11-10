@@ -32,257 +32,177 @@
     @endif
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
-
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Nombre, marca o categoría..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-
-            </div>
-
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
+    <x-data-table
+        id="insumos"
+        label="Tabla de insumos"
+        :columns="\App\Livewire\Inventario\Insumos\Index::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar insumo"
+        search-placeholder="Nombre, marca o categoría..."
+        default-order-label="orden por nombre"
+    >
+        <x-slot:export>
+            <x-table-export id="insumos" :action="route('inventario.insumos.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado]" />
+        </x-slot:export>
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
                     <option value="activo">Activos</option>
                     <option value="inactivo">Inactivos</option>
                 </select>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
+        <x-slot:summary>
+            {{ $insumos->total() }} insumos · {{ $sortColumn ? 'Orden: '.\App\Livewire\Inventario\Insumos\Index::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+        </x-slot:summary>
 
-            </div>
+        @forelse ($insumos as $insumo)
 
-        </div>
+            @php
+                $cantidad = (float) $insumo->cantidad_actual;
 
-    </div>
+                $unidadCantidad =
+                    $cantidad == 1
+                        ? $insumo->unidadMedida->nombre_singular
+                        : $insumo->unidadMedida->nombre_plural;
 
+                $stockMinimo =
+                    (float) $insumo->stock_minimo;
 
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
+                $unidadStock =
+                    $stockMinimo == 1
+                        ? $insumo->unidadMedida->nombre_singular
+                        : $insumo->unidadMedida->nombre_plural;
 
-        <div class="overflow-x-auto">
+                $stockBajo =
+                    $cantidad <= $stockMinimo;
+            @endphp
 
-            <table class="w-full">
 
-                <thead class="bg-gray-50">
+            <tr wire:key="insumos-row-{{ $insumo->id }}" class="hover:bg-canvas/60">
 
-                    <tr>
+                @if (in_array('nombre', $visibleColumns, true))
+                    <td wire:key="insumos-cell-{{ $insumo->id }}-nombre" class="px-5 py-4 font-medium text-gray-800">
+                        {{ $insumo->nombre }}
+                    </td>
+                @endif
 
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Insumo
-                        </th>
 
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Categoría
-                        </th>
+                @if (in_array('categoria', $visibleColumns, true))
+                    <td wire:key="insumos-cell-{{ $insumo->id }}-categoria" class="px-5 py-4 text-gray-600">
+                        {{ $insumo->categoria->nombre }}
+                    </td>
+                @endif
 
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Marca
-                        </th>
 
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Existencia
-                        </th>
+                @if (in_array('marca', $visibleColumns, true))
+                    <td wire:key="insumos-cell-{{ $insumo->id }}-marca" class="px-5 py-4 text-gray-600">
+                        {{ $insumo->marca?->nombre ?? '—' }}
+                    </td>
+                @endif
 
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Stock mínimo
-                        </th>
 
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
+                @if (in_array('cantidad_actual', $visibleColumns, true))
+                    <td wire:key="insumos-cell-{{ $insumo->id }}-cantidad_actual" class="px-5 py-4">
 
-                        <th class="px-5 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
+                        <span
+                            class="{{ $stockBajo
+                                ? 'font-semibold text-red-600'
+                                : 'text-gray-700'
+                            }}"
+                        >
+                            {{ (float) number_format($cantidad, 2, '.', '') }}
 
-                    </tr>
+                            {{ $unidadCantidad }}
+                        </span>
 
-                </thead>
 
+                        @if ($stockBajo)
 
-                <tbody class="divide-y divide-gray-200">
+                            <div class="mt-1 text-xs text-red-600">
+                                Stock bajo
+                            </div>
 
-                    @forelse ($insumos as $insumo)
+                        @endif
 
-                        @php
-                            $cantidad = (float) $insumo->cantidad_actual;
+                    </td>
+                @endif
 
-                            $unidadCantidad =
-                                $cantidad == 1
-                                    ? $insumo->unidadMedida->nombre_singular
-                                    : $insumo->unidadMedida->nombre_plural;
 
-                            $stockMinimo =
-                                (float) $insumo->stock_minimo;
+                @if (in_array('stock_minimo', $visibleColumns, true))
+                    <td wire:key="insumos-cell-{{ $insumo->id }}-stock_minimo" class="px-5 py-4 text-gray-600">
 
-                            $unidadStock =
-                                $stockMinimo == 1
-                                    ? $insumo->unidadMedida->nombre_singular
-                                    : $insumo->unidadMedida->nombre_plural;
+                        {{ (float) number_format($stockMinimo, 2, '.', '') }}
 
-                            $stockBajo =
-                                $cantidad <= $stockMinimo;
-                        @endphp
+                        {{ $unidadStock }}
 
+                    </td>
+                @endif
 
-                        <tr class="hover:bg-gray-50">
 
-                            <td class="px-5 py-4 font-medium text-gray-800">
-                                {{ $insumo->nombre }}
-                            </td>
+                @if (in_array('activo', $visibleColumns, true))
+                    <td wire:key="insumos-cell-{{ $insumo->id }}-activo" class="px-5 py-4">
 
+                        @if ($insumo->activo)
 
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $insumo->categoria->nombre }}
-                            </td>
+                            <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+                                Activo
+                            </span>
 
+                        @else
 
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $insumo->marca?->nombre ?? '—' }}
-                            </td>
+                            <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+                                Inactivo
+                            </span>
 
+                        @endif
 
-                            <td class="px-5 py-4">
+                    </td>
+                @endif
 
-                                <span
-                                    class="{{ $stockBajo
-                                        ? 'font-semibold text-red-600'
-                                        : 'text-gray-700'
-                                    }}"
-                                >
-                                    {{ (float) number_format($cantidad, 2, '.', '') }}
 
-                                    {{ $unidadCantidad }}
-                                </span>
+                <td class="px-5 py-4 text-right">
 
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarInsumo({{ $insumo->id }})" class="icon-button text-blue-600"
+                            title="Editar insumo" aria-label="Editar insumo {{ $insumo->nombre }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $insumo->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $insumo->activo ? 'desactivar' : 'activar' }} el insumo {{ $insumo->nombre }}?"
+                            class="icon-button {{ $insumo->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $insumo->activo ? 'Desactivar insumo' : 'Activar insumo' }}"
+                            aria-label="{{ $insumo->activo ? 'Desactivar' : 'Activar' }} insumo {{ $insumo->nombre }}"><x-icon name="power" /></button>
+                        <button type="button" wire:click="abrirHistorial({{ $insumo->id }})" class="icon-button text-indigo-600"
+                            title="Ver historial" aria-label="Ver historial de {{ $insumo->nombre }}"><x-icon name="history" /></button>
+                    </div>
 
-                                @if ($stockBajo)
+                </td>
 
-                                    <div class="mt-1 text-xs text-red-600">
-                                        Stock bajo
-                                    </div>
+            </tr>
 
-                                @endif
 
-                            </td>
+        @empty
 
+            <tr>
 
-                            <td class="px-5 py-4 text-gray-600">
+                <td
+                    colspan="{{ count($visibleColumns) + 1 }}"
+                    class="px-6 py-12 text-center text-gray-500"
+                >
+                    No se encontraron insumos registrados.
+                </td>
 
-                                {{ (float) number_format($stockMinimo, 2, '.', '') }}
+            </tr>
 
-                                {{ $unidadStock }}
+        @endforelse
 
-                            </td>
-
-
-                            <td class="px-5 py-4">
-
-                                @if ($insumo->activo)
-
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Activo
-                                    </span>
-
-                                @else
-
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                        Inactivo
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-5 py-4 text-right">
-
-                                <div class="flex justify-end gap-3">
-
-                                    <button
-                                        type="button"
-                                        wire:click="editarInsumo({{ $insumo->id }})"
-                                        class="font-medium text-blue-600 hover:text-blue-800"
-                                    >
-                                        Editar
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="cambiarEstado({{ $insumo->id }})"
-                                        class="{{ $insumo->activo
-                                            ? 'font-medium text-red-600 hover:text-red-800'
-                                            : 'font-medium text-green-600 hover:text-green-800'
-                                        }}"
-                                    >
-                                        {{ $insumo->activo
-                                            ? 'Desactivar'
-                                            : 'Activar'
-                                        }}
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="abrirHistorial({{ $insumo->id }})"
-                                        class="font-medium text-indigo-600 hover:text-indigo-800"
-                                    >
-                                        Historial
-                                    </button>
-
-
-                                </div>
-
-                            </td>
-
-                        </tr>
-
-
-                    @empty
-
-                        <tr>
-
-                            <td
-                                colspan="7"
-                                class="px-6 py-12 text-center text-gray-500"
-                            >
-                                No se encontraron insumos registrados.
-                            </td>
-
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $insumos->links() }}
-        </div>
-
-    </div>
+        <x-slot:pagination>{{ $insumos->links() }}</x-slot:pagination>
+    </x-data-table>
 
 
     @if ($mostrarModal)
@@ -491,7 +411,7 @@
                         </div>
 
 
-                        
+
                         {{-- Cantidad actual --}}
                         <div>
 
