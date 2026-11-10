@@ -34,232 +34,78 @@
     @endif
 
 
-    {{-- Filtros --}}
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    <x-data-table
+        id="categorias"
+        label="Tabla de categorías"
+        :columns="\App\Services\CategoriasTable::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar categoría"
+        search-placeholder="Nombre de categoría..."
+        default-order-label="orden por nombre"
+    >
+        <x-slot:export>
+            <x-table-export id="categorias" :action="route('catalogos.categorias.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['filtroTipo' => $filtroTipo, 'filtroEstado' => $filtroEstado]" />
+        </x-slot:export>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Nombre de categoría..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-            </div>
-
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Aplica a
-                </label>
-
-                <select
-                    wire:model.live="filtroTipo"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="equipo">
-                        Equipos
-                    </option>
-
-                    <option value="herramienta">
-                        Herramientas
-                    </option>
-
-                    <option value="insumo">
-                        Insumos
-                    </option>
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Aplica a
+                <select wire:model.live="filtroTipo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    @foreach (\App\Services\CategoriasTable::TYPES as $type => $label)
+                        <option wire:key="categorias-tipo-{{ $type }}" value="{{ $type }}">{{ $label }}</option>
+                    @endforeach
                 </select>
-            </div>
-
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="activo">
-                        Activos
-                    </option>
-
-                    <option value="inactivo">
-                        Inactivos
-                    </option>
+            </label>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="activo">Activas</option>
+                    <option value="inactivo">Inactivas</option>
                 </select>
-            </div>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
 
-        </div>
+        <x-slot:summary>
+            {{ $categorias->total() }} categorías · {{ $sortColumn ? 'Orden: '.\App\Services\CategoriasTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+        </x-slot:summary>
 
-    </div>
+        @forelse ($categorias as $categoria)
+            <tr wire:key="categorias-row-{{ $categoria->id }}" class="hover:bg-canvas/60">
+                @foreach (\App\Services\CategoriasTable::values($categoria) as $column => $value)
+                    @continue(! in_array($column, $visibleColumns, true))
+                    <td wire:key="categorias-cell-{{ $categoria->id }}-{{ $column }}" class="px-4 py-3 text-ink">
+                        @if ($column === 'activo')
+                            <span @class(['rounded-full px-3 py-1 text-xs font-medium', 'bg-green-50 text-green-700' => $categoria->activo, 'bg-red-50 text-red-700' => ! $categoria->activo])>
+                                {{ $value }}
+                            </span>
+                        @else
+                            {{ $value }}
+                        @endif
+                    </td>
+                @endforeach
+                <td class="px-4 py-2 text-right">
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarCategoria({{ $categoria->id }})" class="icon-button text-blue-600"
+                            title="Editar categoría" aria-label="Editar categoría {{ $categoria->nombre }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $categoria->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $categoria->activo ? 'desactivar' : 'activar' }} la categoría {{ $categoria->nombre }}?"
+                            class="icon-button {{ $categoria->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $categoria->activo ? 'Desactivar categoría' : 'Activar categoría' }}"
+                            aria-label="{{ $categoria->activo ? 'Desactivar' : 'Activar' }} categoría {{ $categoria->nombre }}"><x-icon name="power" /></button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron categorías.</td></tr>
+        @endforelse
 
-
-    {{-- Tabla --}}
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-
-        <div class="overflow-x-auto">
-
-            <table class="w-full">
-
-                <thead class="bg-gray-50">
-
-                    <tr>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Categoría
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Aplica a
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Creado por
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
-
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($categorias as $categoria)
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-6 py-4 font-medium text-gray-800">
-                                {{ $categoria->nombre }}
-                            </td>
-
-
-                            <td class="px-6 py-4 text-gray-600">
-
-                                @switch($categoria->aplica_a)
-
-                                    @case('equipo')
-                                        Equipo
-                                        @break
-
-                                    @case('herramienta')
-                                        Herramienta
-                                        @break
-
-                                    @case('insumo')
-                                        Insumo
-                                        @break
-
-                                @endswitch
-
-                            </td>
-
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $categoria->creador?->name ?? 'No disponible' }}
-                            </td>
-
-
-                            <td class="px-6 py-4">
-
-                                @if ($categoria->activo)
-
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Activa
-                                    </span>
-
-                                @else
-
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                        Inactiva
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-6 py-4 text-right">
-
-                                <div class="flex justify-end gap-3">
-
-                                    <button
-                                        type="button"
-                                        wire:click="editarCategoria({{ $categoria->id }})"
-                                        class="font-medium text-blue-600 hover:text-blue-800"
-                                    >
-                                        Editar
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="cambiarEstado({{ $categoria->id }})"
-                                        class="{{ $categoria->activo
-                                            ? 'font-medium text-red-600 hover:text-red-800'
-                                            : 'font-medium text-green-600 hover:text-green-800'
-                                        }}"
-                                    >
-                                        {{ $categoria->activo
-                                            ? 'Desactivar'
-                                            : 'Activar'
-                                        }}
-                                    </button>
-
-                                </div>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-                            <td
-                                colspan="5"
-                                class="px-6 py-10 text-center text-gray-500"
-                            >
-                                No se encontraron categorías.
-                            </td>
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $categorias->links() }}
-        </div>
-
-    </div>
-
+        <x-slot:pagination>{{ $categorias->links() }}</x-slot:pagination>
+    </x-data-table>
 
     {{-- Modal --}}
     @if ($mostrarModal)

@@ -3,6 +3,7 @@
 namespace App\Livewire\Catalogos\Categorias;
 
 use App\Models\Categoria;
+use App\Services\CategoriasTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,51 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = CategoriasTable::COLUMNS;
+
+    public array $visibleColumns = ['nombre', 'aplica_a', 'creado_por', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroTipo', 'filtroEstado');
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -31,24 +77,20 @@ class Index extends Component
 
     public bool $activoCategoria = true;
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
-
 
     public function updatingFiltroTipo(): void
     {
         $this->resetPage();
     }
 
-
     public function updatingFiltroEstado(): void
     {
         $this->resetPage();
     }
-
 
     public function crearCategoria(): void
     {
@@ -56,7 +98,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarCategoria(int $id): void
     {
@@ -72,7 +113,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -82,7 +122,6 @@ class Index extends Component
         $this->resetFormulario();
     }
 
-
     private function resetFormulario(): void
     {
         $this->categoriaId = null;
@@ -90,7 +129,6 @@ class Index extends Component
         $this->aplicaA = 'equipo';
         $this->activoCategoria = true;
     }
-
 
     protected function rules(): array
     {
@@ -112,25 +150,18 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'nombre.required' =>
-            'El nombre de la categoría es obligatorio.',
+            'nombre.required' => 'El nombre de la categoría es obligatorio.',
 
-            'nombre.max' =>
-            'El nombre no puede superar los 100 caracteres.',
+            'nombre.max' => 'El nombre no puede superar los 100 caracteres.',
 
-            'aplicaA.required' =>
-            'Debe seleccionar a qué tipo de inventario aplica la categoría.',
+            'aplicaA.required' => 'Debe seleccionar a qué tipo de inventario aplica la categoría.',
 
-            'aplicaA.in' =>
-            'El tipo seleccionado no es válido.',
+            'aplicaA.in' => 'El tipo seleccionado no es válido.',
         ];
     }
-
-
 
     public function guardarCategoria(): void
     {
@@ -166,7 +197,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->categoriaId
@@ -188,11 +219,10 @@ class Index extends Component
 
             /* Registrar nueva categoría */
 
-
             if ($esCreacion) {
 
                 $datos['creado_por'] = Auth::id();
-                
+
                 $categoria = Categoria::create($datos);
                 RegistrarAuditoria::creacion($categoria, [
                     'nombre',
@@ -203,7 +233,6 @@ class Index extends Component
                 $categoria->fill($datos);
                 RegistrarAuditoria::guardarActualizacion($categoria);
             }
-
 
             return true;
         }, 3);
@@ -230,10 +259,6 @@ class Index extends Component
 
         $this->resetPage();
     }
-
-
-
-
 
     public function cambiarEstado(int $id): void
     {
@@ -271,46 +296,15 @@ class Index extends Component
         );
     }
 
-
-
     public function render()
     {
-        $categorias = Categoria::query()
-            ->with('creador')
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-                    $query->where(
-                        'nombre',
-                        'like',
-                        '%' . trim($this->buscar) . '%'
-                    );
-                }
-            )
-
-            ->when(
-                $this->filtroTipo,
-                function ($query) {
-                    $query->where(
-                        'aplica_a',
-                        $this->filtroTipo
-                    );
-                }
-            )
-
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-
-            ->orderBy('nombre')
-            ->paginate(10);
+        $categorias = app(CategoriasTable::class)->query([
+            'buscar' => $this->buscar,
+            'filtroTipo' => $this->filtroTipo,
+            'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         return view(
             'livewire.catalogos.categorias.index',

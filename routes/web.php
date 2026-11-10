@@ -58,6 +58,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/inventario/tintas/exportar', InventoryExportController::class)
         ->defaults('module', 'tintas')->name('inventario.tintas.exportar');
 
+    Route::get('/catalogos/categorias/exportar', InventoryExportController::class)
+        ->defaults('module', 'categorias')->name('catalogos.categorias.exportar');
+
     Route::get('/mi-perfil', [PerfilController::class, 'show'])->name('perfil.show');
     Route::patch('/mi-perfil', [PerfilController::class, 'update'])->name('perfil.update');
     Route::put('/mi-perfil/contrasena', [PerfilController::class, 'updatePassword'])

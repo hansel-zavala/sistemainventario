@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\CategoriasTable;
 use App\Services\HerramientasTable;
 use App\Services\InsumosTable;
 use App\Services\TableExport;
@@ -19,6 +20,7 @@ class InventoryExportController extends Controller
             'herramientas' => [app(HerramientasTable::class), 'Herramientas'],
             'insumos' => [app(InsumosTable::class), 'Insumos'],
             'tintas' => [app(TintasTable::class), 'Tintas'],
+            'categorias' => [app(CategoriasTable::class), 'Categorías'],
             default => abort(404),
         };
         $filters = $table->validate($request->query());

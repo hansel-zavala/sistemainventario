@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
 use App\Livewire\Inventario\Tintas\Index as TintasIndex;
+use App\Models\Categoria;
 use App\Models\Departamento;
 use App\Models\Herramienta;
 use App\Models\Insumo;
@@ -40,6 +42,9 @@ class InventoryExportTest extends TestCase
     #[TestWith(['tintas', 'csv'])]
     #[TestWith(['tintas', 'xlsx'])]
     #[TestWith(['tintas', 'print'])]
+    #[TestWith(['categorias', 'csv'])]
+    #[TestWith(['categorias', 'xlsx'])]
+    #[TestWith(['categorias', 'print'])]
     public function test_exports_include_all_matching_pages_dates_columns_and_order(string $module, string $format): void
     {
         $this->login(User::factory()->create(['activo' => true]));
@@ -55,18 +60,23 @@ class InventoryExportTest extends TestCase
         if ($module === 'tintas') {
             $this->item($module, ['nombre' => 'MATCH-WRONG-COLOR', 'color' => 'Cian', 'created_at' => '2026-01-15']);
         }
+        if ($module === 'categorias') {
+            $this->item($module, ['nombre' => 'MATCH-WRONG-TYPE', 'aplica_a' => 'insumo', 'created_at' => '2026-01-15']);
+        }
 
-        $response = $this->get(route('inventario.'.$module.'.exportar', [
+        $route = $module === 'categorias' ? 'catalogos.categorias.exportar' : 'inventario.'.$module.'.exportar';
+        $response = $this->get(route($route, [
             'format' => $format, 'columns' => ['nombre'], 'buscar' => 'MATCH',
             'filtroEstado' => 'activo', ...($module === 'herramientas' ? ['filtroTipo' => 'cantidad'] : []),
             ...($module === 'tintas' ? ['filtroColor' => 'Negro'] : []),
+            ...($module === 'categorias' ? ['filtroTipo' => 'equipo'] : []),
             'desde' => '2026-01-01', 'hasta' => '2026-01-31', 'sortColumn' => 'nombre', 'sortDirection' => 'desc',
         ]))->assertOk();
         if ($format === 'print') {
             $response->assertSeeInOrder(['MATCH-11', 'MATCH-00'])->assertDontSee('MATCH-OUTSIDE')
                 ->assertDontSee('MATCH-INACTIVE')->assertDontSee('MATCH-WRONG-TYPE')->assertDontSee('OTHER')
                 ->assertDontSee('MATCH-WRONG-COLOR')
-                ->assertDontSee('Acciones')->assertDontSee('Categoría');
+                ->assertDontSee('Acciones')->assertDontSee('Creado por');
         } elseif ($format === 'csv') {
             $content = $response->streamedContent();
             $lines = explode("\n", trim($content));
@@ -80,11 +90,29 @@ class InventoryExportTest extends TestCase
                 'herramientas' => 'Herramienta',
                 'insumos' => 'Insumo',
                 'tintas' => 'Tinta',
+                'categorias' => 'Categoría',
             };
             $this->assertSame([$header], $rows[0]);
             $this->assertSame(['MATCH-11'], $rows[1]);
             $this->assertSame(['MATCH-00'], $rows[12]);
         }
+    }
+
+    public function test_category_table_sorts_by_creator_name_and_hides_unselected_columns(): void
+    {
+        $zulu = User::factory()->create(['name' => 'Zulu', 'activo' => true]);
+        $alpha = User::factory()->create(['name' => 'Alpha']);
+        $last = Categoria::factory()->create(['creado_por' => $zulu->id]);
+        $first = Categoria::factory()->create(['creado_por' => $alpha->id]);
+
+        Livewire::actingAs($zulu)->test(CategoriasIndex::class)
+            ->assertSee('Columnas')->assertSee('Exportar')
+            ->call('sortBy', 'creado_por')
+            ->assertViewHas('categorias', fn ($rows): bool => $rows->pluck('id')->all() === [$first->id, $last->id])
+            ->call('setVisibleColumns', ['nombre'])
+            ->assertDontSee('categorias-heading-creado_por', false)
+            ->assertDontSee('categorias-export-column-creado_por', false)
+            ->assertSee('Acciones');
     }
 
     public function test_ink_table_sorts_fractional_stock_and_keeps_export_columns_in_sync(): void
@@ -226,6 +254,7 @@ class InventoryExportTest extends TestCase
             'herramientas' => Herramienta::factory()->create($attributes),
             'insumos' => Insumo::factory()->create($attributes),
             'tintas' => Tinta::factory()->create($attributes),
+            'categorias' => Categoria::factory()->create($attributes),
         };
     }
 
