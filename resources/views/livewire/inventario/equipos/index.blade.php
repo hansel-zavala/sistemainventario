@@ -45,6 +45,8 @@
         :sort-direction="$sortDirection"
         search-label="Buscar equipo"
         search-placeholder="Inventario, serie, marca, modelo o tipo..."
+        :collapsible-filters="true"
+        :active-filter-count="count(array_filter($filters, fn ($value) => filled($value)))"
     >
         <x-slot:export>
             <x-table-export id="equipos" :action="route('inventario.equipos.exportar')"
@@ -54,16 +56,16 @@
 
         <x-slot:filters>
             @foreach (['categoria' => 'Categoría', 'tipo' => 'Tipo de equipo', 'marca' => 'Marca', 'departamento' => 'Procedencia'] as $name => $label)
-                <label wire:key="filter-{{ $name }}" class="min-w-36 flex-1 text-xs font-medium text-muted">{{ $label }}
+                <label wire:key="filter-{{ $name }}" class="text-sm font-medium text-muted">{{ $label }}
                     <select wire:model.live="filters.{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                        <option value="">Todas</option>
+                        <option value="">{{ $name === 'tipo' ? 'Todos' : 'Todas' }}</option>
                         @foreach ($filterOptions[$name] as $option)
                             <option wire:key="filter-{{ $name }}-{{ $option->id }}" value="{{ $option->id }}">{{ $option->nombre }}</option>
                         @endforeach
                     </select>
                 </label>
             @endforeach
-            <label class="min-w-36 flex-1 text-xs font-medium text-muted">Estado
+            <label class="text-sm font-medium text-muted sm:col-span-2">Estado
                 <select wire:model.live="filters.estado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
                     <option value="disponible">Disponible</option>
@@ -71,7 +73,6 @@
                     <option value="inactivo">Inactivo</option>
                 </select>
             </label>
-            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
         </x-slot:filters>
 
         <x-slot:summary>

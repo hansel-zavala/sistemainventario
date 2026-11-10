@@ -13,6 +13,8 @@
     'showActions' => true,
     'actionsLabel' => 'Acciones',
     'defaultOrderLabel' => 'ingresos más recientes',
+    'collapsibleFilters' => false,
+    'activeFilterCount' => 0,
 ])
 
 @php
@@ -35,9 +37,9 @@
         }
     "
     @keydown.escape.window="menu = ''">
-    <div class="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="relative flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center sm:justify-between">
         @if ($showSearch)
-            <div class="relative w-full sm:max-w-sm">
+            <div @class(['relative w-full', 'sm:flex-1' => $collapsibleFilters && isset($filters), 'sm:max-w-sm' => ! $collapsibleFilters || ! isset($filters)])>
                 <label for="{{ $id }}-search" class="sr-only">{{ $searchLabel }}</label>
                 <x-icon name="search" class="pointer-events-none absolute top-3 left-3 text-muted" />
                 <input id="{{ $id }}-search" type="search" maxlength="200" wire:model.live.debounce.300ms="buscar"
@@ -45,7 +47,30 @@
                     class="min-h-11 w-full rounded-lg border border-line bg-canvas pr-3 pl-10 text-sm">
             </div>
         @endif
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+            @if ($collapsibleFilters && isset($filters))
+                <div class="lg:relative" @click.outside="if (menu === 'filters') menu = ''"
+                    @keydown.escape="if (menu === 'filters') $refs.filtersButton.focus({ preventScroll: true })">
+                    <button type="button" class="secondary-button" x-ref="filtersButton"
+                        @click="menu = menu === 'filters' ? '' : 'filters'"
+                        aria-expanded="false" :aria-expanded="menu === 'filters'" aria-controls="{{ $id }}-filters"
+                        aria-label="{{ $activeFilterCount ? 'Filtros, '.$activeFilterCount.' activos' : 'Filtros' }}">
+                        <x-icon name="columns" /> Filtros
+                        @if ($activeFilterCount)
+                            <span aria-hidden="true" class="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">{{ $activeFilterCount }}</span>
+                        @endif
+                    </button>
+                    <div id="{{ $id }}-filters" x-show="menu === 'filters'" style="display: none"
+                        role="region" aria-labelledby="{{ $id }}-filters-title"
+                        class="absolute inset-x-4 top-full z-30 mt-2 max-h-[50dvh] overflow-y-auto rounded-xl border border-line bg-surface p-4 text-ink shadow-xl lg:left-auto lg:right-0 lg:w-96">
+                        <h2 id="{{ $id }}-filters-title" class="mb-3 text-sm font-semibold">Filtros</h2>
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">{{ $filters }}</div>
+                        <div class="mt-4 flex justify-end">
+                            <button type="button" wire:click="clearFilters" wire:loading.attr="disabled" class="secondary-button">Limpiar filtros</button>
+                        </div>
+                    </div>
+                </div>
+            @endif
             @if ($showColumns)
                 <div class="relative" @click.outside="if (menu === 'columns') menu = ''">
                     <button type="button" class="secondary-button" @click="menu = menu === 'columns' ? '' : 'columns'"
@@ -82,9 +107,9 @@
             @endisset
         </div>
     </div>
-    @isset($filters)
+    @if (isset($filters) && ! $collapsibleFilters)
         <div class="flex flex-wrap items-end gap-3 border-b border-line p-4">{{ $filters }}</div>
-    @endisset
+    @endif
     <div class="flex items-center justify-between gap-3 px-4 py-2 text-xs text-muted" aria-live="polite">
         <span>{{ $summary ?? '' }}</span>
         <span wire:loading>Actualizando…</span>

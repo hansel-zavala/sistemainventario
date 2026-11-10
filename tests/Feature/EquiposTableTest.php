@@ -95,10 +95,13 @@ class EquiposTableTest extends TestCase
             ->set('filters.marca', (string) $match->marca_id)
             ->set('filters.departamento', (string) $match->departamento_id)
             ->set('filters.estado', 'disponible')
+            ->assertSee('aria-controls="equipos-filters"', false)
+            ->assertSee('Filtros, 5 activos')
             ->assertViewHas('equipos', fn ($rows): bool => $rows->total() === 1 && $rows->first()->id === $match->id);
         $component->call('setPage', 2)->set('filters.estado', 'inactivo')->assertSet('paginators.page', 1)
             ->assertViewHas('equipos', fn ($rows): bool => $rows->total() === 0)
             ->call('clearFilters')->assertSet('buscar', '')
+            ->assertDontSee('Filtros, 5 activos')
             ->assertViewHas('equipos', fn ($rows): bool => $rows->total() === 2);
     }
 
