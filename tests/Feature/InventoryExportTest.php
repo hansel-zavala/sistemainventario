@@ -2,14 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Models\Departamento;
 use App\Models\Herramienta;
 use App\Models\Insumo;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
+use App\Models\Tinta;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Livewire\Livewire;
 use OpenSpout\Reader\XLSX\Reader;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -34,6 +37,9 @@ class InventoryExportTest extends TestCase
     #[TestWith(['insumos', 'csv'])]
     #[TestWith(['insumos', 'xlsx'])]
     #[TestWith(['insumos', 'print'])]
+    #[TestWith(['tintas', 'csv'])]
+    #[TestWith(['tintas', 'xlsx'])]
+    #[TestWith(['tintas', 'print'])]
     public function test_exports_include_all_matching_pages_dates_columns_and_order(string $module, string $format): void
     {
         $this->login(User::factory()->create(['activo' => true]));
@@ -46,15 +52,20 @@ class InventoryExportTest extends TestCase
         if ($module === 'herramientas') {
             $this->item($module, ['nombre' => 'MATCH-WRONG-TYPE', 'tipo_control' => 'individual', 'created_at' => '2026-01-15']);
         }
+        if ($module === 'tintas') {
+            $this->item($module, ['nombre' => 'MATCH-WRONG-COLOR', 'color' => 'Cian', 'created_at' => '2026-01-15']);
+        }
 
         $response = $this->get(route('inventario.'.$module.'.exportar', [
             'format' => $format, 'columns' => ['nombre'], 'buscar' => 'MATCH',
             'filtroEstado' => 'activo', ...($module === 'herramientas' ? ['filtroTipo' => 'cantidad'] : []),
+            ...($module === 'tintas' ? ['filtroColor' => 'Negro'] : []),
             'desde' => '2026-01-01', 'hasta' => '2026-01-31', 'sortColumn' => 'nombre', 'sortDirection' => 'desc',
         ]))->assertOk();
         if ($format === 'print') {
             $response->assertSeeInOrder(['MATCH-11', 'MATCH-00'])->assertDontSee('MATCH-OUTSIDE')
                 ->assertDontSee('MATCH-INACTIVE')->assertDontSee('MATCH-WRONG-TYPE')->assertDontSee('OTHER')
+                ->assertDontSee('MATCH-WRONG-COLOR')
                 ->assertDontSee('Acciones')->assertDontSee('Categoría');
         } elseif ($format === 'csv') {
             $content = $response->streamedContent();
@@ -65,10 +76,44 @@ class InventoryExportTest extends TestCase
         } else {
             $rows = $this->readXlsx($response->streamedContent());
             $this->assertCount(13, $rows);
-            $this->assertSame([$module === 'herramientas' ? 'Herramienta' : 'Insumo'], $rows[0]);
+            $header = match ($module) {
+                'herramientas' => 'Herramienta',
+                'insumos' => 'Insumo',
+                'tintas' => 'Tinta',
+            };
+            $this->assertSame([$header], $rows[0]);
             $this->assertSame(['MATCH-11'], $rows[1]);
             $this->assertSame(['MATCH-00'], $rows[12]);
         }
+    }
+
+    public function test_ink_table_sorts_fractional_stock_and_keeps_export_columns_in_sync(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $small = Tinta::factory()->create(['botellas_completas' => 1, 'porcentaje_botella_abierta' => 25, 'stock_minimo_botellas' => 2]);
+        $large = Tinta::factory()->create(['botellas_completas' => 1, 'porcentaje_botella_abierta' => 75]);
+        Tinta::factory()->create(['color' => 'Cian']);
+
+        Livewire::actingAs($user)->test(TintasIndex::class)
+            ->assertSee('Columnas')->assertSee('Exportar')
+            ->set('filtroColor', 'Negro')->call('sortBy', 'existencia')
+            ->assertViewHas('tintas', fn ($rows): bool => $rows->pluck('id')->all() === [$small->id, $large->id])
+            ->call('sortBy', 'existencia')
+            ->assertViewHas('tintas', fn ($rows): bool => $rows->pluck('id')->all() === [$large->id, $small->id])
+            ->call('setVisibleColumns', ['existencia'])
+            ->assertSee('Stock bajo')->assertSee('1.25 botellas')
+            ->assertDontSee('tintas-heading-presentacion', false)
+            ->assertDontSee('tintas-export-column-presentacion', false);
+    }
+
+    public function test_ink_export_includes_open_bottle_percentage_and_low_stock(): void
+    {
+        $this->login(User::factory()->create(['activo' => true]));
+        Tinta::factory()->create(['botellas_completas' => 1, 'porcentaje_botella_abierta' => 25, 'stock_minimo_botellas' => 2]);
+
+        $this->get(route('inventario.tintas.exportar', ['format' => 'print', 'columns' => ['existencia']]))
+            ->assertOk()->assertSee('1 botella completa + 25 % de una botella abierta')
+            ->assertSee('Equivalente: 1.25 botellas / Stock bajo');
     }
 
     public function test_tool_exports_include_partial_returns_individual_loans_and_inactive_status(): void
@@ -177,9 +222,11 @@ class InventoryExportTest extends TestCase
     /** @param array<string, mixed> $attributes */
     private function item(string $module, array $attributes): Model
     {
-        return $module === 'herramientas'
-            ? Herramienta::factory()->create($attributes)
-            : Insumo::factory()->create($attributes);
+        return match ($module) {
+            'herramientas' => Herramienta::factory()->create($attributes),
+            'insumos' => Insumo::factory()->create($attributes),
+            'tintas' => Tinta::factory()->create($attributes),
+        };
     }
 
     private function login(User $user): void

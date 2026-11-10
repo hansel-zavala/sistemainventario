@@ -3,21 +3,69 @@
 namespace App\Livewire\Inventario\Tintas;
 
 use App\Models\Marca;
-use App\Models\Tinta;
 use App\Models\MovimientoInventarioDetalle;
 use App\Models\RecargaTintaDetalle;
+use App\Models\Tinta;
+use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
+use App\Services\TintasTable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Illuminate\Support\Facades\DB;
-use App\Services\RegistrarAperturaInventario;
 
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = TintasTable::COLUMNS;
+
+    public array $visibleColumns = ['nombre', 'color', 'presentacion', 'existencia', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroColor', 'filtroEstado');
+        $this->resetPage();
+    }
 
     public bool $mostrarHistorial = false;
 
@@ -53,24 +101,20 @@ class Index extends Component
 
     public bool $activoTinta = true;
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
-
 
     public function updatingFiltroColor(): void
     {
         $this->resetPage();
     }
 
-
     public function updatingFiltroEstado(): void
     {
         $this->resetPage();
     }
-
 
     public function crearTinta(): void
     {
@@ -78,7 +122,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarTinta(int $id): void
     {
@@ -116,7 +159,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -125,7 +167,6 @@ class Index extends Component
 
         $this->resetFormulario();
     }
-
 
     private function resetFormulario(): void
     {
@@ -140,7 +181,6 @@ class Index extends Component
         $this->observaciones = '';
         $this->activoTinta = true;
     }
-
 
     protected function rules(): array
     {
@@ -199,55 +239,38 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'nombre.required' =>
-            'El nombre o referencia de la tinta es obligatorio.',
+            'nombre.required' => 'El nombre o referencia de la tinta es obligatorio.',
 
-            'marcaId.exists' =>
-            'La marca seleccionada no es válida.',
+            'marcaId.exists' => 'La marca seleccionada no es válida.',
 
-            'color.required' =>
-            'El color de la tinta es obligatorio.',
+            'color.required' => 'El color de la tinta es obligatorio.',
 
-            'botellasCompletas.required' =>
-            'Debe indicar la cantidad de botellas completas.',
+            'botellasCompletas.required' => 'Debe indicar la cantidad de botellas completas.',
 
-            'botellasCompletas.integer' =>
-            'Las botellas completas deben registrarse con un número entero.',
+            'botellasCompletas.integer' => 'Las botellas completas deben registrarse con un número entero.',
 
-            'botellasCompletas.min' =>
-            'La cantidad de botellas no puede ser negativa.',
+            'botellasCompletas.min' => 'La cantidad de botellas no puede ser negativa.',
 
-            'porcentajeBotellaAbierta.required' =>
-            'Debe indicar el porcentaje restante de la botella abierta.',
+            'porcentajeBotellaAbierta.required' => 'Debe indicar el porcentaje restante de la botella abierta.',
 
-            'porcentajeBotellaAbierta.numeric' =>
-            'El porcentaje de la botella abierta debe ser un número.',
+            'porcentajeBotellaAbierta.numeric' => 'El porcentaje de la botella abierta debe ser un número.',
 
-            'porcentajeBotellaAbierta.min' =>
-            'El porcentaje no puede ser negativo.',
+            'porcentajeBotellaAbierta.min' => 'El porcentaje no puede ser negativo.',
 
-            'porcentajeBotellaAbierta.max' =>
-            'La botella abierta debe tener un valor menor de 100 %.',
+            'porcentajeBotellaAbierta.max' => 'La botella abierta debe tener un valor menor de 100 %.',
 
-            'stockMinimoBotellas.required' =>
-            'Debe indicar el stock mínimo.',
+            'stockMinimoBotellas.required' => 'Debe indicar el stock mínimo.',
 
-            'stockMinimoBotellas.numeric' =>
-            'El stock mínimo debe ser un número.',
+            'stockMinimoBotellas.numeric' => 'El stock mínimo debe ser un número.',
 
-            'stockMinimoBotellas.min' =>
-            'El stock mínimo no puede ser negativo.',
+            'stockMinimoBotellas.min' => 'El stock mínimo no puede ser negativo.',
 
-            'observaciones.max' =>
-            'Las observaciones no pueden superar los 2000 caracteres.',
+            'observaciones.max' => 'Las observaciones no pueden superar los 2000 caracteres.',
         ];
     }
-
-
 
     public function guardarTinta(): void
     {
@@ -303,17 +326,17 @@ class Index extends Component
                 )
                 ->when(
                     $marcaId !== null,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'marca_id',
                         $marcaId
                     ),
-                    fn($query) => $query->whereNull(
+                    fn ($query) => $query->whereNull(
                         'marca_id'
                     )
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->tintaId
@@ -323,15 +346,14 @@ class Index extends Component
 
             if ($duplicada) {
 
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    'nombre' =>
-                    'Ya existe una tinta con esta referencia, marca y color.',
+                throw ValidationException::withMessages([
+                    'nombre' => 'Ya existe una tinta con esta referencia, marca y color.',
                 ]);
             }
 
             /* Preparar datos generales */
 
-            /* No incluimos las existencias de tinta porque al editar deben conservarse.*/
+            /* No incluimos las existencias de tinta porque al editar deben conservarse. */
 
             $datos = [
                 'nombre' => $nombre,
@@ -340,15 +362,13 @@ class Index extends Component
 
                 'color' => $color,
 
-                'presentacion' =>
-                trim($this->presentacion) !== ''
+                'presentacion' => trim($this->presentacion) !== ''
                     ? trim($this->presentacion)
                     : null,
 
                 'stock_minimo_botellas' => $stockMinimo,
 
-                'observaciones' =>
-                trim($this->observaciones) !== ''
+                'observaciones' => trim($this->observaciones) !== ''
                     ? trim($this->observaciones)
                     : null,
 
@@ -356,8 +376,6 @@ class Index extends Component
             ];
 
             /* Crear una nueva tinta */
-
-
 
             if ($esCreacion) {
 
@@ -375,12 +393,12 @@ class Index extends Component
                     $tinta->id,
                     $existenciaEquivalente,
                     'Apertura inicial de tinta: '
-                        . $tinta->nombre
-                        . ' | Color: ' . $tinta->color
-                        . ' | Botellas completas: ' . $botellasIniciales
-                        . ' | Porcentaje de botella abierta: '
-                        . number_format($porcentajeInicial, 2, '.', '')
-                        . '%'
+                        .$tinta->nombre
+                        .' | Color: '.$tinta->color
+                        .' | Botellas completas: '.$botellasIniciales
+                        .' | Porcentaje de botella abierta: '
+                        .number_format($porcentajeInicial, 2, '.', '')
+                        .'%'
                 );
 
                 RegistrarAuditoria::creacion($tinta, [
@@ -411,9 +429,6 @@ class Index extends Component
         $this->cerrarModal();
         $this->resetPage();
     }
-
-
-
 
     public function cambiarEstado(int $id): void
     {
@@ -455,8 +470,6 @@ class Index extends Component
         );
     }
 
-
-
     public function abrirHistorial(int $id): void
     {
         $tinta = Tinta::findOrFail($id);
@@ -464,7 +477,7 @@ class Index extends Component
         $this->historialTintaId = $tinta->id;
 
         $this->historialTintaNombre =
-            $tinta->nombre . ' — ' . $tinta->color;
+            $tinta->nombre.' — '.$tinta->color;
 
         $this->mostrarHistorial = true;
     }
@@ -478,89 +491,26 @@ class Index extends Component
         $this->historialTintaNombre = '';
     }
 
-
     public function render()
     {
-        $tintas = Tinta::query()
-            ->with('marca')
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-
-                    $buscar =
-                        '%' . trim($this->buscar) . '%';
-
-                    $query->where(
-                        function ($subQuery) use ($buscar) {
-
-                            $subQuery
-                                ->where(
-                                    'nombre',
-                                    'like',
-                                    $buscar
-                                )
-                                ->orWhere(
-                                    'color',
-                                    'like',
-                                    $buscar
-                                )
-                                ->orWhere(
-                                    'presentacion',
-                                    'like',
-                                    $buscar
-                                )
-                                ->orWhereHas(
-                                    'marca',
-                                    function ($marcaQuery) use ($buscar) {
-                                        $marcaQuery->where(
-                                            'nombre',
-                                            'like',
-                                            $buscar
-                                        );
-                                    }
-                                );
-                        }
-                    );
-                }
-            )
-
-            ->when(
-                $this->filtroColor,
-                function ($query) {
-                    $query->where(
-                        'color',
-                        $this->filtroColor
-                    );
-                }
-            )
-
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-
-            ->orderBy('nombre')
-            ->paginate(10);
-
+        $tintas = app(TintasTable::class)->query([
+            'buscar' => $this->buscar,
+            'filtroColor' => $this->filtroColor,
+            'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         $marcas = Marca::query()
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
 
-
         $colores = Tinta::query()
             ->select('color')
             ->distinct()
             ->orderBy('color')
             ->pluck('color');
-
 
         /* Historial completo de tinta */
 
@@ -659,15 +609,15 @@ class Index extends Component
                 );
 
                 $descripcion = 'Impresora: '
-                    . $identificacionEquipo
-                    . ' | Nivel antes: '
-                    . number_format($nivelAntes, 2, '.', '')
-                    . '% | Nivel después: '
-                    . number_format($nivelDespues, 2, '.', '')
-                    . '%';
+                    .$identificacionEquipo
+                    .' | Nivel antes: '
+                    .number_format($nivelAntes, 2, '.', '')
+                    .'% | Nivel después: '
+                    .number_format($nivelDespues, 2, '.', '')
+                    .'%';
 
                 if ($observaciones !== '') {
-                    $descripcion .= ' | ' . $observaciones;
+                    $descripcion .= ' | '.$observaciones;
                 }
 
                 $eventosHistorial->push([
@@ -675,8 +625,7 @@ class Index extends Component
 
                     'fecha' => $recarga->created_at,
 
-                    'cantidad' =>
-                    (float) $detalleRecarga->porcentaje_agregado,
+                    'cantidad' => (float) $detalleRecarga->porcentaje_agregado,
 
                     'unidad' => '% de una botella',
 
@@ -701,11 +650,11 @@ class Index extends Component
             $eventosHistorial = $eventosHistorial
                 ->sort(function ($a, $b) {
 
-                    $fechaA = \Illuminate\Support\Carbon::parse(
+                    $fechaA = Carbon::parse(
                         $a['fecha']
                     )->getTimestamp();
 
-                    $fechaB = \Illuminate\Support\Carbon::parse(
+                    $fechaB = Carbon::parse(
                         $b['fecha']
                     )->getTimestamp();
 
@@ -722,7 +671,6 @@ class Index extends Component
                 ->take(50)
                 ->values();
         }
-
 
         return view(
             'livewire.inventario.tintas.index',

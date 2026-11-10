@@ -32,310 +32,111 @@
     @endif
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    <x-data-table
+        id="tintas"
+        label="Tabla de tintas"
+        :columns="\App\Services\TintasTable::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar tinta"
+        search-placeholder="Referencia, marca, color..."
+        default-order-label="orden por nombre"
+    >
+        <x-slot:export>
+            <x-table-export id="tintas" :action="route('inventario.tintas.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['filtroColor' => $filtroColor, 'filtroEstado' => $filtroEstado]" />
+        </x-slot:export>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Referencia, marca, color..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2">
-
-            </div>
-
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Color
-                </label>
-
-                <select
-                    wire:model.live="filtroColor"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2">
-
-                    <option value="">
-                        Todos
-                    </option>
-
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Color
+                <select wire:model.live="filtroColor" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
                     @foreach ($colores as $color)
-
-                    <option value="{{ $color }}">
-                        {{ $color }}
-                    </option>
-
+                        <option wire:key="tintas-color-{{ $color }}" value="{{ $color }}">{{ $color }}</option>
                     @endforeach
-
                 </select>
-
-            </div>
-
-
-            <div>
-
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2">
-
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="activo">
-                        Activos
-                    </option>
-
-                    <option value="inactivo">
-                        Inactivos
-                    </option>
-
+            </label>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="activo">Activas</option>
+                    <option value="inactivo">Inactivas</option>
                 </select>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-
-        <div class="overflow-x-auto">
-
-            <table class="w-full">
-
-                <thead class="bg-gray-50">
-
-                    <tr>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Tinta
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Color
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Presentación
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Existencia
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
-
-                        <th class="px-5 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($tintas as $tinta)
-
-                    @php
-
-                    $equivalente =
-                    $tinta->existencia_equivalente;
-
-                    $stockBajo =
-                    $equivalente
-                    <= (float) $tinta->stock_minimo_botellas;
-
-                        @endphp
-
-
-                        <tr class="hover:bg-gray-50">
-
-
-                            <td class="px-5 py-4">
-
-                                <div class="font-medium text-gray-800">
-                                    {{ $tinta->nombre }}
-                                </div>
-
-                                @if ($tinta->marca)
-
-                                <div class="text-sm text-gray-500">
-                                    {{ $tinta->marca->nombre }}
-                                </div>
-
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $tinta->color }}
-                            </td>
-
-
-                            <td class="px-5 py-4 text-gray-600">
-                                {{ $tinta->presentacion ?? '—' }}
-                            </td>
-
-
-                            <td class="px-5 py-4">
-
-                                <div
-                                    class="{{ $stockBajo
-                                        ? 'font-semibold text-red-600'
-                                        : 'font-medium text-gray-700'
-                                    }}">
-                                    {{ $tinta->botellas_completas }}
-
-                                    {{ $tinta->botellas_completas == 1
-                                        ? 'botella completa'
-                                        : 'botellas completas'
-                                    }}
-                                </div>
-
-
-                                @if ((float) $tinta->porcentaje_botella_abierta > 0)
-
-                                <div class="mt-1 text-sm text-gray-600">
-                                    + {{ rtrim(
-                                            rtrim(
-                                                number_format(
-                                                    (float) $tinta->porcentaje_botella_abierta,
-                                                    2,
-                                                    '.',
-                                                    ''
-                                                ),
-                                                '0'
-                                            ),
-                                            '.'
-                                        ) }} % de una botella abierta
-                                </div>
-
-                                @endif
-
-
-                                <div class="mt-1 text-xs text-gray-500">
-                                    Equivalente:
-                                    {{ number_format($equivalente, 2) }}
-                                    botellas
-                                </div>
-
-
-                                @if ($stockBajo)
-
-                                <div class="mt-1 text-xs font-medium text-red-600">
-                                    Stock bajo
-                                </div>
-
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-5 py-4">
-
-                                @if ($tinta->activo)
-
-                                <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                    Activa
-                                </span>
-
-                                @else
-
-                                <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                    Inactiva
-                                </span>
-
-                                @endif
-
-                            </td>
-
-
-                            <td class="px-5 py-4 text-right">
-
-                                <div class="flex justify-end gap-3">
-
-                                    <button
-                                        type="button"
-                                        wire:click="editarTinta({{ $tinta->id }})"
-                                        class="font-medium text-blue-600 hover:text-blue-800">
-                                        Editar
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="cambiarEstado({{ $tinta->id }})"
-                                        class="{{ $tinta->activo
-                                            ? 'font-medium text-red-600 hover:text-red-800'
-                                            : 'font-medium text-green-600 hover:text-green-800'
-                                        }}">
-                                        {{ $tinta->activo
-                                            ? 'Desactivar'
-                                            : 'Activar'
-                                        }}
-                                    </button>
-
-
-                                    <button
-                                        type="button"
-                                        wire:click="abrirHistorial({{ $tinta->id }})"
-                                        class="font-medium text-indigo-600 hover:text-indigo-800">
-                                        Historial
-                                    </button>
-
-
-                                </div>
-
-                            </td>
-
-                        </tr>
-
-
-                        @empty
-
-                        <tr>
-
-                            <td
-                                colspan="6"
-                                class="px-6 py-12 text-center text-gray-500">
-                                No se encontraron tintas registradas.
-                            </td>
-
-                        </tr>
-
-                        @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $tintas->links() }}
-        </div>
-
-    </div>
-
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
+
+        <x-slot:summary>
+            {{ $tintas->total() }} tintas · {{ $sortColumn ? 'Orden: '.\App\Services\TintasTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+        </x-slot:summary>
+
+        @forelse ($tintas as $tinta)
+            <tr wire:key="tintas-row-{{ $tinta->id }}" class="hover:bg-canvas/60">
+                @foreach (\App\Services\TintasTable::COLUMNS as $column => $label)
+                    @if (in_array($column, $visibleColumns, true))
+                        <td wire:key="tintas-cell-{{ $tinta->id }}-{{ $column }}" class="px-4 py-3 text-ink">
+                            @switch($column)
+                                @case('nombre')
+                                    <div class="font-medium">{{ $tinta->nombre }}</div>
+                                    @if ($tinta->marca)
+                                        <div class="text-xs text-muted">{{ $tinta->marca->nombre }}</div>
+                                    @endif
+                                    @break
+                                @case('color')
+                                    {{ $tinta->color }}
+                                    @break
+                                @case('presentacion')
+                                    {{ $tinta->presentacion ?? '—' }}
+                                    @break
+                                @case('existencia')
+                                    @php
+                                        $equivalente = $tinta->existencia_equivalente;
+                                        $stockBajo = $equivalente <= (float) $tinta->stock_minimo_botellas;
+                                    @endphp
+                                    <div @class(['font-medium', 'text-red-600' => $stockBajo])>
+                                        {{ $tinta->botellas_completas }} {{ $tinta->botellas_completas === 1 ? 'botella completa' : 'botellas completas' }}
+                                    </div>
+                                    @if ((float) $tinta->porcentaje_botella_abierta > 0)
+                                        <div class="mt-1 text-sm text-muted">
+                                            + {{ rtrim(rtrim(number_format((float) $tinta->porcentaje_botella_abierta, 2, '.', ''), '0'), '.') }} % de una botella abierta
+                                        </div>
+                                    @endif
+                                    <div class="mt-1 text-xs text-muted">Equivalente: {{ number_format($equivalente, 2) }} botellas</div>
+                                    @if ($stockBajo)
+                                        <div class="mt-1 text-xs font-medium text-red-600">Stock bajo</div>
+                                    @endif
+                                    @break
+                                @case('activo')
+                                    <span @class(['rounded-full px-3 py-1 text-xs font-medium', 'bg-green-50 text-green-700' => $tinta->activo, 'bg-red-50 text-red-700' => ! $tinta->activo])>
+                                        {{ $tinta->activo ? 'Activa' : 'Inactiva' }}
+                                    </span>
+                                    @break
+                            @endswitch
+                        </td>
+                    @endif
+                @endforeach
+                <td class="px-4 py-2 text-right">
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarTinta({{ $tinta->id }})" class="icon-button text-blue-600"
+                            title="Editar tinta" aria-label="Editar tinta {{ $tinta->nombre }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $tinta->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $tinta->activo ? 'desactivar' : 'activar' }} la tinta {{ $tinta->nombre }}?"
+                            class="icon-button {{ $tinta->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $tinta->activo ? 'Desactivar tinta' : 'Activar tinta' }}"
+                            aria-label="{{ $tinta->activo ? 'Desactivar' : 'Activar' }} tinta {{ $tinta->nombre }}"><x-icon name="power" /></button>
+                        <button type="button" wire:click="abrirHistorial({{ $tinta->id }})" class="icon-button text-indigo-600"
+                            title="Ver historial" aria-label="Ver historial de {{ $tinta->nombre }}"><x-icon name="history" /></button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron tintas registradas.</td></tr>
+        @endforelse
+
+        <x-slot:pagination>{{ $tintas->links() }}</x-slot:pagination>
+    </x-data-table>
 
     @if ($mostrarModal)
 
