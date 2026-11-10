@@ -32,189 +32,70 @@
     @endif
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    <x-data-table
+        id="unidades-medida"
+        label="Tabla de unidades de medida"
+        :columns="\App\Services\UnidadesMedidaTable::COLUMNS"
+        :visible-columns="$visibleColumns"
+        :sort-column="$sortColumn"
+        :sort-direction="$sortDirection"
+        search-label="Buscar unidad"
+        search-placeholder="Nombre o abreviatura de la unidad..."
+        default-order-label="orden por singular"
+    >
+        <x-slot:export>
+            <x-table-export id="unidades-medida" :action="route('catalogos.unidades-medida.exportar')"
+                :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
+                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado]" />
+        </x-slot:export>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Singular, plural o abreviatura..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-            </div>
-
-
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="activo">
-                        Activas
-                    </option>
-
-                    <option value="inactivo">
-                        Inactivas
-                    </option>
+        <x-slot:filters>
+            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    <option value="activo">Activas</option>
+                    <option value="inactivo">Inactivas</option>
                 </select>
-            </div>
+            </label>
+            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+        </x-slot:filters>
 
-        </div>
+        <x-slot:summary>
+            {{ $unidades->total() }} unidades · {{ $sortColumn ? 'Orden: '.\App\Services\UnidadesMedidaTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por singular' }}
+        </x-slot:summary>
 
-    </div>
+        @forelse ($unidades as $unidad)
+            <tr wire:key="unidades-medida-row-{{ $unidad->id }}" class="hover:bg-canvas/60">
+                @foreach (\App\Services\UnidadesMedidaTable::values($unidad) as $column => $value)
+                    @continue(! in_array($column, $visibleColumns, true))
+                    <td wire:key="unidades-medida-cell-{{ $unidad->id }}-{{ $column }}" class="px-4 py-3 text-ink">
+                        @if ($column === 'activo')
+                            <span @class(['rounded-full px-3 py-1 text-xs font-medium', 'bg-green-50 text-green-700' => $unidad->activo, 'bg-red-50 text-red-700' => ! $unidad->activo])>
+                                {{ $value }}
+                            </span>
+                        @else
+                            {{ $value }}
+                        @endif
+                    </td>
+                @endforeach
+                <td class="px-4 py-2 text-right">
+                    <div class="flex justify-end gap-1">
+                        <button type="button" wire:click="editarUnidadMedida({{ $unidad->id }})" class="icon-button text-blue-600"
+                            title="Editar unidad" aria-label="Editar unidad {{ $unidad->nombre_singular }}"><x-icon name="edit" /></button>
+                        <button type="button" wire:click="cambiarEstado({{ $unidad->id }})" wire:loading.attr="disabled"
+                            wire:confirm="¿Desea {{ $unidad->activo ? 'desactivar' : 'activar' }} la unidad {{ $unidad->nombre_singular }}?"
+                            class="icon-button {{ $unidad->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
+                            title="{{ $unidad->activo ? 'Desactivar unidad' : 'Activar unidad' }}"
+                            aria-label="{{ $unidad->activo ? 'Desactivar' : 'Activar' }} unidad {{ $unidad->nombre_singular }}"><x-icon name="power" /></button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron unidades registradas.</td></tr>
+        @endforelse
 
-
-    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-
-        <div class="overflow-x-auto">
-
-            <table class="w-full">
-
-                <thead class="bg-gray-50">
-
-                    <tr>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Singular
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Plural
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Abreviatura
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Decimales
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
-                            Estado
-                        </th>
-
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
-                            Acciones
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody class="divide-y divide-gray-200">
-
-                    @forelse ($unidades as $unidad)
-
-                        <tr class="hover:bg-gray-50">
-
-                            <td class="px-6 py-4 font-medium text-gray-800">
-                                {{ $unidad->nombre_singular }}
-                            </td>
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $unidad->nombre_plural }}
-                            </td>
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $unidad->abreviatura ?? '—' }}
-                            </td>
-
-                            <td class="px-6 py-4 text-gray-600">
-                                {{ $unidad->permite_decimales ? 'Sí' : 'No' }}
-                            </td>
-
-                            <td class="px-6 py-4">
-
-                                @if ($unidad->activo)
-
-                                    <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Activa
-                                    </span>
-
-                                @else
-
-                                    <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-                                        Inactiva
-                                    </span>
-
-                                @endif
-
-                            </td>
-
-                            <td class="px-6 py-4 text-right">
-
-                                <div class="flex justify-end gap-3">
-
-                                    <button
-                                        type="button"
-                                        wire:click="editarUnidadMedida({{ $unidad->id }})"
-                                        class="font-medium text-blue-600 hover:text-blue-800"
-                                    >
-                                        Editar
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        wire:click="cambiarEstado({{ $unidad->id }})"
-                                        class="{{ $unidad->activo
-                                            ? 'font-medium text-red-600 hover:text-red-800'
-                                            : 'font-medium text-green-600 hover:text-green-800'
-                                        }}"
-                                    >
-                                        {{ $unidad->activo
-                                            ? 'Desactivar'
-                                            : 'Activar'
-                                        }}
-                                    </button>
-
-                                </div>
-
-                            </td>
-
-                        </tr>
-
-                    @empty
-
-                        <tr>
-                            <td
-                                colspan="6"
-                                class="px-6 py-10 text-center text-gray-500"
-                            >
-                                No se encontraron unidades de medida.
-                            </td>
-                        </tr>
-
-                    @endforelse
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <div class="border-t border-gray-200 px-6 py-4">
-            {{ $unidades->links() }}
-        </div>
-
-    </div>
-
+        <x-slot:pagination>{{ $unidades->links() }}</x-slot:pagination>
+    </x-data-table>
 
     @if ($mostrarModal)
 

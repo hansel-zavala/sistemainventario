@@ -70,6 +70,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/catalogos/departamentos/exportar', InventoryExportController::class)
         ->defaults('module', 'departamentos')->name('catalogos.departamentos.exportar');
 
+    Route::get('/catalogos/unidades-medida/exportar', InventoryExportController::class)
+        ->defaults('module', 'unidades-medida')->name('catalogos.unidades-medida.exportar');
+
     Route::get('/mi-perfil', [PerfilController::class, 'show'])->name('perfil.show');
     Route::patch('/mi-perfil', [PerfilController::class, 'update'])->name('perfil.update');
     Route::put('/mi-perfil/contrasena', [PerfilController::class, 'updatePassword'])

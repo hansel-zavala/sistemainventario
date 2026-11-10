@@ -6,6 +6,7 @@ use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
 use App\Livewire\Catalogos\Departamentos\Index as DepartamentosIndex;
 use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
 use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
+use App\Livewire\Catalogos\UnidadesMedida\Index as UnidadesMedidaIndex;
 use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Models\Categoria;
 use App\Models\Departamento;
@@ -16,6 +17,7 @@ use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
 use App\Models\Tinta;
 use App\Models\TipoEquipo;
+use App\Models\UnidadMedida;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -59,15 +61,19 @@ class InventoryExportTest extends TestCase
     #[TestWith(['departamentos', 'csv'])]
     #[TestWith(['departamentos', 'xlsx'])]
     #[TestWith(['departamentos', 'print'])]
+    #[TestWith(['unidades-medida', 'csv'])]
+    #[TestWith(['unidades-medida', 'xlsx'])]
+    #[TestWith(['unidades-medida', 'print'])]
     public function test_exports_include_all_matching_pages_dates_columns_and_order(string $module, string $format): void
     {
         $this->login(User::factory()->create(['activo' => true]));
+        $nameColumn = $module === 'unidades-medida' ? 'nombre_singular' : 'nombre';
         for ($i = 0; $i < 12; $i++) {
-            $this->item($module, ['nombre' => sprintf('MATCH-%02d', $i), 'created_at' => $i === 0 ? '2026-01-01 00:00:00' : '2026-01-31 23:59:59']);
+            $this->item($module, [$nameColumn => sprintf('MATCH-%02d', $i), 'created_at' => $i === 0 ? '2026-01-01 00:00:00' : '2026-01-31 23:59:59']);
         }
-        $this->item($module, ['nombre' => 'MATCH-OUTSIDE', 'created_at' => '2026-02-01 00:00:00']);
-        $this->item($module, ['nombre' => 'MATCH-INACTIVE', 'activo' => false, 'created_at' => '2026-01-15']);
-        $this->item($module, ['nombre' => 'OTHER', 'created_at' => '2026-01-15']);
+        $this->item($module, [$nameColumn => 'MATCH-OUTSIDE', 'created_at' => '2026-02-01 00:00:00']);
+        $this->item($module, [$nameColumn => 'MATCH-INACTIVE', 'activo' => false, 'created_at' => '2026-01-15']);
+        $this->item($module, [$nameColumn => 'OTHER', 'created_at' => '2026-01-15']);
         if ($module === 'herramientas') {
             $this->item($module, ['nombre' => 'MATCH-WRONG-TYPE', 'tipo_control' => 'individual', 'created_at' => '2026-01-15']);
         }
@@ -78,14 +84,14 @@ class InventoryExportTest extends TestCase
             $this->item($module, ['nombre' => 'MATCH-WRONG-TYPE', 'aplica_a' => 'insumo', 'created_at' => '2026-01-15']);
         }
 
-        $prefix = in_array($module, ['categorias', 'tipos-equipo', 'marcas', 'departamentos'], true) ? 'catalogos' : 'inventario';
+        $prefix = in_array($module, ['categorias', 'tipos-equipo', 'marcas', 'departamentos', 'unidades-medida'], true) ? 'catalogos' : 'inventario';
         $route = $prefix.'.'.$module.'.exportar';
         $response = $this->get(route($route, [
-            'format' => $format, 'columns' => ['nombre'], 'buscar' => 'MATCH',
+            'format' => $format, 'columns' => [$nameColumn], 'buscar' => 'MATCH',
             'filtroEstado' => 'activo', ...($module === 'herramientas' ? ['filtroTipo' => 'cantidad'] : []),
             ...($module === 'tintas' ? ['filtroColor' => 'Negro'] : []),
             ...($module === 'categorias' ? ['filtroTipo' => 'equipo'] : []),
-            'desde' => '2026-01-01', 'hasta' => '2026-01-31', 'sortColumn' => 'nombre', 'sortDirection' => 'desc',
+            'desde' => '2026-01-01', 'hasta' => '2026-01-31', 'sortColumn' => $nameColumn, 'sortDirection' => 'desc',
         ]))->assertOk();
         if ($format === 'print') {
             $response->assertSeeInOrder(['MATCH-11', 'MATCH-00'])->assertDontSee('MATCH-OUTSIDE')
@@ -109,6 +115,7 @@ class InventoryExportTest extends TestCase
                 'tipos-equipo' => 'Tipo de equipo',
                 'marcas' => 'Marca',
                 'departamentos' => 'Departamento',
+                'unidades-medida' => 'Singular',
             };
             $this->assertSame([$header], $rows[0]);
             $this->assertSame(['MATCH-11'], $rows[1]);
@@ -131,6 +138,25 @@ class InventoryExportTest extends TestCase
             ->assertDontSee('categorias-heading-creado_por', false)
             ->assertDontSee('categorias-export-column-creado_por', false)
             ->assertSee('Acciones');
+    }
+
+    public function test_measurement_units_keep_plural_search_and_decimal_export_column(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $this->login($user);
+        $unit = UnidadMedida::factory()->create(['nombre_singular' => 'Litro', 'nombre_plural' => 'Litros', 'abreviatura' => 'L', 'permite_decimales' => true]);
+        UnidadMedida::factory()->create(['nombre_singular' => 'Caja', 'nombre_plural' => 'Cajas', 'abreviatura' => 'cj']);
+
+        Livewire::actingAs($user)->test(UnidadesMedidaIndex::class)
+            ->assertSee('Columnas')->assertSee('Exportar')
+            ->set('buscar', 'Litros')
+            ->assertViewHas('unidades', fn ($rows): bool => $rows->pluck('id')->all() === [$unit->id])
+            ->call('setVisibleColumns', ['permite_decimales'])
+            ->assertDontSee('unidades-medida-heading-nombre_plural', false)
+            ->assertDontSee('unidades-medida-export-column-nombre_plural', false);
+
+        $this->get(route('catalogos.unidades-medida.exportar', ['format' => 'print', 'columns' => ['permite_decimales'], 'buscar' => 'Litros']))
+            ->assertOk()->assertSee('Decimales')->assertSee('<td>Sí</td>', false)->assertDontSee('Singular');
     }
 
     public function test_departments_keep_the_initials_search_and_selected_export_columns(): void
@@ -325,6 +351,7 @@ class InventoryExportTest extends TestCase
             'tipos-equipo' => TipoEquipo::factory()->create($attributes),
             'marcas' => Marca::factory()->create($attributes),
             'departamentos' => Departamento::factory()->create($attributes),
+            'unidades-medida' => UnidadMedida::factory()->create($attributes),
         };
     }
 

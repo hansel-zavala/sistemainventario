@@ -10,6 +10,7 @@ use App\Services\MarcasTable;
 use App\Services\TableExport;
 use App\Services\TintasTable;
 use App\Services\TiposEquipoTable;
+use App\Services\UnidadesMedidaTable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -27,6 +28,7 @@ class InventoryExportController extends Controller
             'tipos-equipo' => [app(TiposEquipoTable::class), 'Tipos de equipo'],
             'marcas' => [app(MarcasTable::class), 'Marcas'],
             'departamentos' => [app(DepartamentosTable::class), 'Departamentos'],
+            'unidades-medida' => [app(UnidadesMedidaTable::class), 'Unidades de medida'],
             default => abort(404),
         };
         $filters = $table->validate($request->query());

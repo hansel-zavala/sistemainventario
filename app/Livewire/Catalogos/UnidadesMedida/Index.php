@@ -4,6 +4,7 @@ namespace App\Livewire\Catalogos\UnidadesMedida;
 
 use App\Models\UnidadMedida;
 use App\Services\RegistrarAuditoria;
+use App\Services\UnidadesMedidaTable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -14,6 +15,51 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public const COLUMNS = UnidadesMedidaTable::COLUMNS;
+
+    public array $visibleColumns = ['nombre_singular', 'nombre_plural', 'abreviatura', 'permite_decimales', 'activo'];
+
+    public string $sortColumn = '';
+
+    public string $sortDirection = '';
+
+    public function setVisibleColumns(array $columns): void
+    {
+        $columns = array_values(array_intersect(array_keys(self::COLUMNS), array_filter($columns, 'is_string')));
+        if ($columns !== []) {
+            $this->visibleColumns = $columns;
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        $this->setVisibleColumns(in_array($column, $this->visibleColumns, true)
+            ? array_diff($this->visibleColumns, [$column])
+            : [...$this->visibleColumns, $column]);
+    }
+
+    public function sortBy(string $column): void
+    {
+        abort_unless(array_key_exists($column, self::COLUMNS), 422);
+        if ($this->sortColumn !== $column) {
+            $this->sortColumn = $column;
+            $this->sortDirection = 'asc';
+        } elseif ($this->sortDirection === 'asc') {
+            $this->sortDirection = 'desc';
+        } else {
+            $this->sortColumn = '';
+            $this->sortDirection = '';
+        }
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('buscar', 'filtroEstado');
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -33,18 +79,15 @@ class Index extends Component
 
     public bool $activoUnidad = true;
 
-
     public function updatingBuscar(): void
     {
         $this->resetPage();
     }
 
-
     public function updatingFiltroEstado(): void
     {
         $this->resetPage();
     }
-
 
     public function crearUnidadMedida(): void
     {
@@ -52,7 +95,6 @@ class Index extends Component
 
         $this->mostrarModal = true;
     }
-
 
     public function editarUnidadMedida(int $id): void
     {
@@ -70,7 +112,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -79,7 +120,6 @@ class Index extends Component
 
         $this->resetFormulario();
     }
-
 
     private function resetFormulario(): void
     {
@@ -90,7 +130,6 @@ class Index extends Component
         $this->permiteDecimales = false;
         $this->activoUnidad = true;
     }
-
 
     protected function rules(): array
     {
@@ -123,28 +162,20 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'nombreSingular.required' =>
-            'El nombre en singular es obligatorio.',
+            'nombreSingular.required' => 'El nombre en singular es obligatorio.',
 
-            'nombreSingular.max' =>
-            'El nombre en singular no puede superar los 50 caracteres.',
+            'nombreSingular.max' => 'El nombre en singular no puede superar los 50 caracteres.',
 
-            'nombrePlural.required' =>
-            'El nombre en plural es obligatorio.',
+            'nombrePlural.required' => 'El nombre en plural es obligatorio.',
 
-            'nombrePlural.max' =>
-            'El nombre en plural no puede superar los 50 caracteres.',
+            'nombrePlural.max' => 'El nombre en plural no puede superar los 50 caracteres.',
 
-            'abreviatura.max' =>
-            'La abreviatura no puede superar los 15 caracteres.',
+            'abreviatura.max' => 'La abreviatura no puede superar los 15 caracteres.',
         ];
     }
-
-
 
     public function guardarUnidadMedida(): void
     {
@@ -181,7 +212,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->unidadMedidaId
@@ -201,7 +232,7 @@ class Index extends Component
                 )
                 ->when(
                     ! $esCreacion,
-                    fn($query) => $query->where(
+                    fn ($query) => $query->where(
                         'id',
                         '!=',
                         $this->unidadMedidaId
@@ -246,7 +277,6 @@ class Index extends Component
                 RegistrarAuditoria::guardarActualizacion($unidad);
             }
 
-
             return 'ok';
         }, 3);
 
@@ -279,10 +309,6 @@ class Index extends Component
         $this->cerrarModal();
         $this->resetPage();
     }
-
-
-
-
 
     public function cambiarEstado(int $id): void
     {
@@ -320,50 +346,14 @@ class Index extends Component
         );
     }
 
-
-
-
     public function render()
     {
-        $unidades = UnidadMedida::query()
-            ->with('creador')
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-                    $query->where(function ($subQuery) {
-                        $subQuery
-                            ->where(
-                                'nombre_singular',
-                                'like',
-                                '%' . trim($this->buscar) . '%'
-                            )
-                            ->orWhere(
-                                'nombre_plural',
-                                'like',
-                                '%' . trim($this->buscar) . '%'
-                            )
-                            ->orWhere(
-                                'abreviatura',
-                                'like',
-                                '%' . trim($this->buscar) . '%'
-                            );
-                    });
-                }
-            )
-
-            ->when(
-                $this->filtroEstado !== '',
-                function ($query) {
-                    $query->where(
-                        'activo',
-                        $this->filtroEstado === 'activo'
-                    );
-                }
-            )
-
-            ->orderBy('nombre_singular')
-            ->paginate(10);
+        $unidades = app(UnidadesMedidaTable::class)->query([
+            'buscar' => $this->buscar,
+            'filtroEstado' => $this->filtroEstado,
+            'sortColumn' => $this->sortColumn,
+            'sortDirection' => $this->sortDirection,
+        ])->paginate(10);
 
         return view(
             'livewire.catalogos.unidades-medida.index',
