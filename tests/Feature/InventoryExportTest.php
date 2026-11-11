@@ -232,6 +232,25 @@ class InventoryExportTest extends TestCase
             ->assertSee('Acciones');
     }
 
+    public function test_measurement_unit_status_filter_and_pagination_stay_in_sync(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        UnidadMedida::factory()->create(['nombre_singular' => 'Litro', 'nombre_plural' => 'Litros', 'abreviatura' => 'ltr', 'activo' => true]);
+
+        Livewire::actingAs($user)->test(UnidadesMedidaIndex::class)
+            ->set('buscar', 'ltr')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="unidades-medida-filters"', false)
+            ->assertSee('Filtros, 1 activo')->assertSee('Estado: Activas')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('setPage', 2)->call('removeStatusFilter')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'ltr')->assertSet('filtroEstado', '')
+            ->assertDontSee('unidades-medida-filter-chip-estado', false)
+            ->set('filtroEstado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('unidades-medida-filter-chip-estado', false)->assertSee('Página 1 de 1');
+    }
+
     public function test_measurement_units_keep_plural_search_and_decimal_export_column(): void
     {
         $user = User::factory()->create(['activo' => true]);
