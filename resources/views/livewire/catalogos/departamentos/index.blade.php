@@ -32,6 +32,11 @@
     @endif
 
 
+    @php
+        $statusOptions = ['activo' => 'Activos', 'inactivo' => 'Inactivos'];
+        $activeStatus = $statusOptions[$filtroEstado] ?? null;
+    @endphp
+
     <x-data-table
         id="departamentos"
         label="Tabla de departamentos"
@@ -42,27 +47,38 @@
         search-label="Buscar departamento"
         search-placeholder="Nombre o sigla del departamento..."
         default-order-label="orden por nombre"
+        :collapsible-filters="true"
+        :active-filter-count="$activeStatus === null ? 0 : 1"
     >
         <x-slot:export>
             <x-table-export id="departamentos" :action="route('catalogos.departamentos.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
                 :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado]" />
         </x-slot:export>
-
         <x-slot:filters>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+            <label class="text-sm font-medium text-muted sm:col-span-2">Estado
                 <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
-                    <option value="activo">Activos</option>
-                    <option value="inactivo">Inactivos</option>
+                    @foreach ($statusOptions as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
                 </select>
             </label>
-            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
         </x-slot:filters>
-
         <x-slot:summary>
-            {{ $departamentos->total() }} departamentos · {{ $sortColumn ? 'Orden: '.\App\Services\DepartamentosTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+            Mostrando {{ $departamentos->count() }} de {{ $departamentos->total() }} departamentos encontrados
         </x-slot:summary>
+
+        <x-slot:filterChips>
+            @if ($activeStatus !== null)
+                <button type="button" wire:key="departamentos-filter-chip-estado" wire:click="removeStatusFilter"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro Estado: {{ $activeStatus }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">Estado: {{ $activeStatus }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endif
+        </x-slot:filterChips>
 
         @forelse ($departamentos as $departamento)
             <tr wire:key="departamentos-row-{{ $departamento->id }}" class="hover:bg-canvas/60">
@@ -94,7 +110,9 @@
             <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron departamentos registrados.</td></tr>
         @endforelse
 
-        <x-slot:pagination>{{ $departamentos->links() }}</x-slot:pagination>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$departamentos" label="Paginación de departamentos" />
+        </x-slot:pagination>
     </x-data-table>
 
     @if ($mostrarModal)

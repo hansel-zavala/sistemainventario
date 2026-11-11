@@ -251,6 +251,25 @@ class InventoryExportTest extends TestCase
             ->assertOk()->assertSee('Decimales')->assertSee('<td>Sí</td>', false)->assertDontSee('Singular');
     }
 
+    public function test_department_status_filter_and_pagination_stay_in_sync(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Departamento::factory()->create(['nombre' => 'Soporte', 'sigla' => 'TIC', 'activo' => true]);
+
+        Livewire::actingAs($user)->test(DepartamentosIndex::class)
+            ->set('buscar', 'TIC')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="departamentos-filters"', false)
+            ->assertSee('Filtros, 1 activo')->assertSee('Estado: Activos')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('setPage', 2)->call('removeStatusFilter')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'TIC')->assertSet('filtroEstado', '')
+            ->assertDontSee('departamentos-filter-chip-estado', false)
+            ->set('filtroEstado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('departamentos-filter-chip-estado', false)->assertSee('Página 1 de 1');
+    }
+
     public function test_departments_keep_the_initials_search_and_selected_export_columns(): void
     {
         $user = User::factory()->create(['activo' => true]);
