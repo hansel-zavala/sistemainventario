@@ -37,6 +37,14 @@
         </div>
     @enderror
 
+    @php
+        $filterFields = [
+            'filtroTipo' => ['label' => 'Tipo de control', 'options' => ['individual' => 'Individual', 'cantidad' => 'Por cantidad'], 'value' => $filtroTipo],
+            'filtroEstado' => ['label' => 'Estado', 'options' => ['activo' => 'Activos', 'inactivo' => 'Inactivos'], 'value' => $filtroEstado],
+        ];
+        $activeFilters = array_filter($filterFields, fn ($field) => isset($field['options'][$field['value']]));
+    @endphp
+
     <x-data-table
         id="herramientas"
         label="Tabla de herramientas"
@@ -47,6 +55,8 @@
         search-label="Buscar herramienta"
         search-placeholder="Nombre, código o marca..."
         default-order-label="orden por nombre"
+        :collapsible-filters="true"
+        :active-filter-count="count($activeFilters)"
     >
         <x-slot:export>
             <x-table-export id="herramientas" :action="route('inventario.herramientas.exportar')"
@@ -54,25 +64,35 @@
                 :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado, 'filtroTipo' => $filtroTipo]" />
         </x-slot:export>
         <x-slot:filters>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Tipo de control
-                <select wire:model.live="filtroTipo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    <option value="individual">Individual</option>
-                    <option value="cantidad">Por cantidad</option>
-                </select>
-            </label>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
-                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    <option value="activo">Activos</option>
-                    <option value="inactivo">Inactivos</option>
-                </select>
-            </label>
-            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+            @foreach ($filterFields as $name => $field)
+                <label wire:key="herramientas-filter-{{ $name }}" class="text-sm font-medium text-muted">
+                    {{ $field['label'] }}
+                    <select wire:model.live="{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                        <option value="">Todos</option>
+                        @foreach ($field['options'] as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endforeach
         </x-slot:filters>
         <x-slot:summary>
-            {{ $herramientas->total() }} herramientas · {{ $sortColumn ? 'Orden: '.\App\Livewire\Inventario\Herramientas\Index::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+            Mostrando {{ $herramientas->count() }} de {{ $herramientas->total() }} herramientas encontradas
         </x-slot:summary>
+
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $name => $field)
+                @php
+                    $chipLabel = $field['label'].': '.$field['options'][$field['value']];
+                @endphp
+                <button type="button" wire:key="herramientas-filter-chip-{{ $name }}" wire:click="removeFilter('{{ $name }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $chipLabel }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $chipLabel }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
 
         @forelse ($herramientas as $herramienta)
 
@@ -289,7 +309,9 @@
 
         @endforelse
 
-        <x-slot:pagination>{{ $herramientas->links() }}</x-slot:pagination>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$herramientas" label="Paginación de herramientas" />
+        </x-slot:pagination>
     </x-data-table>
 
 

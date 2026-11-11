@@ -8,9 +8,9 @@ use App\Models\Marca;
 use App\Models\MovimientoInventario;
 use App\Models\PrestamoDetalle;
 use App\Models\UnidadMedida;
+use App\Services\HerramientasTable;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
-use App\Services\HerramientasTable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +66,14 @@ class Index extends Component
     public function clearFilters(): void
     {
         $this->reset('buscar', 'filtroTipo', 'filtroEstado');
+        $this->resetPage();
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, ['filtroTipo', 'filtroEstado'], true), 422);
+
+        $this->reset($filter);
         $this->resetPage();
     }
 

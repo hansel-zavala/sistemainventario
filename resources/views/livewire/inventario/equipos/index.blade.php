@@ -137,19 +137,7 @@
         @endforelse
 
         <x-slot:pagination>
-            <nav aria-label="Paginación de equipos" class="flex flex-wrap items-center justify-between gap-3">
-                <span class="text-sm text-muted" aria-live="polite">
-                    {{ $equipos->total() === 0 ? '0 resultados' : 'Página '.$equipos->currentPage().' de '.$equipos->lastPage() }}
-                </span>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" wire:click="previousPage" @disabled($equipos->onFirstPage())
-                        @unless($equipos->onFirstPage()) wire:loading.attr="disabled" wire:target="previousPage, nextPage" @endunless
-                        class="secondary-button disabled:cursor-not-allowed disabled:opacity-50">Anterior</button>
-                    <button type="button" wire:click="nextPage" @disabled(! $equipos->hasMorePages())
-                        @if ($equipos->hasMorePages()) wire:loading.attr="disabled" wire:target="previousPage, nextPage" @endif
-                        class="secondary-button disabled:cursor-not-allowed disabled:opacity-50">Siguiente</button>
-                </div>
-            </nav>
+            <x-table-pagination :paginator="$equipos" label="Paginación de equipos" />
         </x-slot:pagination>
     </x-data-table>
 

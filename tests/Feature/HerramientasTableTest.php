@@ -102,10 +102,19 @@ class HerramientasTableTest extends TestCase
 
         Livewire::actingAs(User::factory()->create(['activo' => true]))->test(Index::class)
             ->set('buscar', 'Match')->set('filtroTipo', 'individual')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="herramientas-filters"', false)
+            ->assertSee('Filtros, 2 activos')->assertSee('Tipo de control: Individual')->assertSee('Estado: Activos')
+            ->assertSee('Mostrando 1 de 1 herramientas encontradas')->assertSee('Página 1 de 1')
+            ->assertSee('wire:click="previousPage" disabled', false)->assertSee('wire:click="nextPage" disabled', false)
             ->assertViewHas('herramientas', fn ($rows): bool => $rows->total() === 1 && $rows->first()->id === $match->id)
+            ->call('setPage', 2)->call('removeFilter', 'filtroTipo')->assertSet('paginators.page', 1)
+            ->assertSet('buscar', 'Match')->assertSet('filtroTipo', '')->assertSet('filtroEstado', 'activo')
+            ->assertDontSee('herramientas-filter-chip-filtroTipo', false)->assertSee('Estado: Activos')
             ->call('setPage', 2)->set('filtroEstado', 'inactivo')->assertSet('paginators.page', 1)
             ->assertViewHas('herramientas', fn ($rows): bool => $rows->total() === 0)
+            ->assertSee('0 resultados')->assertSee('wire:click="nextPage" disabled', false)
             ->call('clearFilters')->assertSet('buscar', '')->assertSet('filtroTipo', '')->assertSet('filtroEstado', '')
+            ->assertDontSee('herramientas-filter-chip-', false)
             ->assertViewHas('herramientas', fn ($rows): bool => $rows->total() === 2);
     }
 
