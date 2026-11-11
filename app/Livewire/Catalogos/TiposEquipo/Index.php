@@ -61,6 +61,12 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function removeStatusFilter(): void
+    {
+        $this->reset('filtroEstado');
+        $this->resetPage();
+    }
+
     public string $buscar = '';
 
     public string $filtroEstado = '';

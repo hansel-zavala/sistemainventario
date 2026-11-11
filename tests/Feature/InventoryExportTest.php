@@ -284,6 +284,25 @@ class InventoryExportTest extends TestCase
             ->assertSee('Acciones');
     }
 
+    public function test_equipment_type_status_filter_and_pagination_stay_in_sync(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        TipoEquipo::factory()->create(['nombre' => 'Portátil', 'activo' => true]);
+
+        Livewire::actingAs($user)->test(TiposEquipoIndex::class)
+            ->set('buscar', 'Portátil')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="tipos-equipo-filters"', false)
+            ->assertSee('Filtros, 1 activo')->assertSee('Estado: Activos')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('setPage', 2)->call('removeStatusFilter')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'Portátil')->assertSet('filtroEstado', '')
+            ->assertDontSee('tipos-equipo-filter-chip-estado', false)
+            ->set('filtroEstado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('tipos-equipo-filter-chip-estado', false)->assertSee('Página 1 de 1');
+    }
+
     public function test_equipment_types_sort_by_creator_and_export_only_visible_columns(): void
     {
         $zulu = User::factory()->create(['name' => 'Zulu', 'activo' => true]);
