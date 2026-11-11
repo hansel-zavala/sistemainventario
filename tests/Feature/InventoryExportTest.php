@@ -85,6 +85,25 @@ class InventoryExportTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors(['columns.0', 'columns.1']);
     }
 
+    public function test_user_filters_and_pagination_stay_in_sync(): void
+    {
+        $admin = User::factory()->create(['name' => 'Patricia', 'activo' => true]);
+        $admin->assignRole(Role::create(['name' => 'Administrador', 'guard_name' => 'web']));
+
+        Livewire::actingAs($admin)->test(UsuariosIndex::class)
+            ->set('buscar', 'Patricia')->set('rol', 'Administrador')->set('estado', 'activo')
+            ->assertSee('aria-controls="usuarios-filters"', false)
+            ->assertSee('Filtros, 2 activos')->assertSee('Rol: Administrador')->assertSee('Estado: Activos')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('setPage', 2)->call('removeFilter', 'rol')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'Patricia')->assertSet('rol', '')
+            ->assertSet('estado', 'activo')->assertDontSee('usuarios-filter-chip-rol', false)->assertSee('Filtros, 1 activo')
+            ->set('estado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('usuarios-filter-chip-', false)->assertSee('Página 1 de 1');
+    }
+
     public function test_users_table_sorts_by_role_and_hides_unselected_export_columns(): void
     {
         $techRole = Role::create(['name' => 'Técnico', 'guard_name' => 'web']);

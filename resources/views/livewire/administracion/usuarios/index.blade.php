@@ -36,6 +36,14 @@
     @endif
 
 
+    @php
+        $filterFields = [
+            'rol' => ['label' => 'Rol', 'options' => ['Administrador' => 'Administrador', 'Técnico' => 'Técnico'], 'value' => $rol],
+            'estado' => ['label' => 'Estado', 'options' => ['activo' => 'Activos', 'inactivo' => 'Inactivos'], 'value' => $estado],
+        ];
+        $activeFilters = array_filter($filterFields, fn ($field) => isset($field['options'][$field['value']]));
+    @endphp
+
     <x-data-table
         id="usuarios"
         label="Tabla de usuarios"
@@ -46,34 +54,44 @@
         search-label="Buscar usuario"
         search-placeholder="Nombre o correo..."
         default-order-label="orden por nombre"
+        :collapsible-filters="true"
+        :active-filter-count="count($activeFilters)"
     >
         <x-slot:export>
             <x-table-export id="usuarios" :action="route('administracion.usuarios.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
                 :visible-columns="$visibleColumns" :export-filters="['estado' => $estado, 'rol' => $rol]" />
         </x-slot:export>
-
         <x-slot:filters>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Rol
-                <select wire:model.live="rol" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    <option value="Administrador">Administrador</option>
-                    <option value="Técnico">Técnico</option>
-                </select>
-            </label>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
-                <select wire:model.live="estado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    <option value="activo">Activos</option>
-                    <option value="inactivo">Inactivos</option>
-                </select>
-            </label>
-            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+            @foreach ($filterFields as $name => $field)
+                <label wire:key="usuarios-filter-{{ $name }}" class="text-sm font-medium text-muted">
+                    {{ $field['label'] }}
+                    <select wire:model.live="{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                        <option value="">Todos</option>
+                        @foreach ($field['options'] as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endforeach
         </x-slot:filters>
-
         <x-slot:summary>
-            {{ $usuarios->total() }} usuarios · {{ $sortColumn ? 'Orden: '.\App\Services\UsuariosTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+            Mostrando {{ $usuarios->count() }} de {{ $usuarios->total() }} usuarios encontrados
         </x-slot:summary>
+
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $name => $field)
+                @php
+                    $chipLabel = $field['label'].': '.$field['options'][$field['value']];
+                @endphp
+                <button type="button" wire:key="usuarios-filter-chip-{{ $name }}" wire:click="removeFilter('{{ $name }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $chipLabel }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $chipLabel }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
 
         @forelse ($usuarios as $usuario)
             <tr wire:key="usuarios-row-{{ $usuario->id }}" class="hover:bg-canvas/60">
@@ -102,7 +120,9 @@
             <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron usuarios registrados.</td></tr>
         @endforelse
 
-        <x-slot:pagination>{{ $usuarios->links() }}</x-slot:pagination>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$usuarios" label="Paginación de usuarios" />
+        </x-slot:pagination>
     </x-data-table>
 
     @if ($mostrarModal)
