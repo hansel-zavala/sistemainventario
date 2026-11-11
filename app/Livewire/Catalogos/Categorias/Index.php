@@ -61,6 +61,14 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, ['filtroTipo', 'filtroEstado'], true), 422);
+
+        $this->reset($filter);
+        $this->resetPage();
+    }
+
     public string $buscar = '';
 
     public string $filtroTipo = '';

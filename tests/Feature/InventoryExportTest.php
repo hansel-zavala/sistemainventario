@@ -196,6 +196,25 @@ class InventoryExportTest extends TestCase
         }
     }
 
+    public function test_category_filter_labels_and_pagination_stay_in_sync(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Categoria::factory()->create(['nombre' => 'Redes', 'aplica_a' => 'equipo']);
+
+        Livewire::actingAs($user)->test(CategoriasIndex::class)
+            ->set('buscar', 'Redes')->set('filtroTipo', 'equipo')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="categorias-filters"', false)
+            ->assertSee('Filtros, 2 activos')->assertSee('Aplica a: Equipo')->assertSee('Estado: Activas')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('setPage', 2)->call('removeFilter', 'filtroTipo')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'Redes')->assertSet('filtroEstado', 'activo')
+            ->assertDontSee('categorias-filter-chip-filtroTipo', false)->assertSee('Filtros, 1 activo')
+            ->set('filtroEstado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('categorias-filter-chip-', false)->assertSee('Página 1 de 1');
+    }
+
     public function test_category_table_sorts_by_creator_name_and_hides_unselected_columns(): void
     {
         $zulu = User::factory()->create(['name' => 'Zulu', 'activo' => true]);

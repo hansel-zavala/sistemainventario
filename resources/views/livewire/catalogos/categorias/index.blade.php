@@ -34,6 +34,14 @@
     @endif
 
 
+    @php
+        $filterFields = [
+            'filtroTipo' => ['label' => 'Aplica a', 'options' => \App\Services\CategoriasTable::TYPES, 'value' => $filtroTipo],
+            'filtroEstado' => ['label' => 'Estado', 'options' => ['activo' => 'Activas', 'inactivo' => 'Inactivas'], 'value' => $filtroEstado],
+        ];
+        $activeFilters = array_filter($filterFields, fn ($field) => isset($field['options'][$field['value']]));
+    @endphp
+
     <x-data-table
         id="categorias"
         label="Tabla de categorías"
@@ -44,35 +52,44 @@
         search-label="Buscar categoría"
         search-placeholder="Nombre de categoría..."
         default-order-label="orden por nombre"
+        :collapsible-filters="true"
+        :active-filter-count="count($activeFilters)"
     >
         <x-slot:export>
             <x-table-export id="categorias" :action="route('catalogos.categorias.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
-                :visible-columns="$visibleColumns" :export-filters="['filtroTipo' => $filtroTipo, 'filtroEstado' => $filtroEstado]" />
+                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado, 'filtroTipo' => $filtroTipo]" />
         </x-slot:export>
-
         <x-slot:filters>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Aplica a
-                <select wire:model.live="filtroTipo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    @foreach (\App\Services\CategoriasTable::TYPES as $type => $label)
-                        <option wire:key="categorias-tipo-{{ $type }}" value="{{ $type }}">{{ $label }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
-                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    <option value="activo">Activas</option>
-                    <option value="inactivo">Inactivas</option>
-                </select>
-            </label>
-            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
+            @foreach ($filterFields as $name => $field)
+                <label wire:key="categorias-filter-{{ $name }}" class="text-sm font-medium text-muted">
+                    {{ $field['label'] }}
+                    <select wire:model.live="{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                        <option value="">Todos</option>
+                        @foreach ($field['options'] as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endforeach
         </x-slot:filters>
-
         <x-slot:summary>
-            {{ $categorias->total() }} categorías · {{ $sortColumn ? 'Orden: '.\App\Services\CategoriasTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+            Mostrando {{ $categorias->count() }} de {{ $categorias->total() }} categorías encontradas
         </x-slot:summary>
+
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $name => $field)
+                @php
+                    $chipLabel = $field['label'].': '.$field['options'][$field['value']];
+                @endphp
+                <button type="button" wire:key="categorias-filter-chip-{{ $name }}" wire:click="removeFilter('{{ $name }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $chipLabel }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $chipLabel }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
 
         @forelse ($categorias as $categoria)
             <tr wire:key="categorias-row-{{ $categoria->id }}" class="hover:bg-canvas/60">
@@ -104,7 +121,9 @@
             <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron categorías.</td></tr>
         @endforelse
 
-        <x-slot:pagination>{{ $categorias->links() }}</x-slot:pagination>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$categorias" label="Paginación de categorías" />
+        </x-slot:pagination>
     </x-data-table>
 
     {{-- Modal --}}
