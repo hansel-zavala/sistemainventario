@@ -119,10 +119,18 @@ class InsumosTableTest extends TestCase
 
         Livewire::actingAs(User::factory()->create(['activo' => true]))->test(Index::class)
             ->set('buscar', 'Network')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="insumos-filters"', false)->assertSee('Filtros, 1 activo')
+            ->assertSee('Estado: Activos')->assertSee('Mostrando 1 de 1 insumos encontrados')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
             ->assertViewHas('insumos', fn ($rows): bool => $rows->total() === 1 && $rows->first()->id === $match->id)
+            ->call('setPage', 2)->call('removeStatusFilter')->assertSet('paginators.page', 1)
+            ->assertSet('buscar', 'Network')->assertSet('filtroEstado', '')
+            ->assertDontSee('insumos-filter-chip-estado', false)
             ->set('buscar', 'Acme')->assertViewHas('insumos', fn ($rows): bool => $rows->total() === 1)
             ->call('setPage', 2)->set('filtroEstado', 'inactivo')->assertSet('paginators.page', 1)
             ->assertViewHas('insumos', fn ($rows): bool => $rows->total() === 0)
+            ->assertSee('0 resultados')->assertSee('wire:click="nextPage" disabled', false)
             ->call('clearFilters')->assertSet('buscar', '')->assertSet('filtroEstado', '')
             ->assertViewHas('insumos', fn ($rows): bool => $rows->total() === 2);
     }

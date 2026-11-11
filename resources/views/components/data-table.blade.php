@@ -54,7 +54,7 @@
                     <button type="button" class="secondary-button" x-ref="filtersButton"
                         @click="menu = menu === 'filters' ? '' : 'filters'"
                         aria-expanded="false" :aria-expanded="menu === 'filters'" aria-controls="{{ $id }}-filters"
-                        aria-label="{{ $activeFilterCount ? 'Filtros, '.$activeFilterCount.' activos' : 'Filtros' }}">
+                        aria-label="{{ $activeFilterCount ? 'Filtros, '.$activeFilterCount.($activeFilterCount === 1 ? ' activo' : ' activos') : 'Filtros' }}">
                         <x-icon name="columns" /> Filtros
                         @if ($activeFilterCount)
                             <span aria-hidden="true" class="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">{{ $activeFilterCount }}</span>

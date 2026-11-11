@@ -7,9 +7,9 @@ use App\Models\Insumo;
 use App\Models\Marca;
 use App\Models\MovimientoInventario;
 use App\Models\UnidadMedida;
+use App\Services\InsumosTable;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
-use App\Services\InsumosTable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -64,6 +64,12 @@ class Index extends Component
     public function clearFilters(): void
     {
         $this->reset('buscar', 'filtroEstado');
+        $this->resetPage();
+    }
+
+    public function removeStatusFilter(): void
+    {
+        $this->reset('filtroEstado');
         $this->resetPage();
     }
 
