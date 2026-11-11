@@ -34,6 +34,33 @@ class EquiposTableTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
+    public function test_pagination_stays_visible_when_search_reduces_results(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Equipo::factory()->count(10)->create();
+        Equipo::factory()->create(['numero_inventario' => 'MATCH-ONLY']);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSee('Página 1 de 2')
+            ->assertSee('wire:click="previousPage" disabled', false)
+            ->assertDontSee('wire:click="nextPage" disabled', false)
+            ->call('nextPage')
+            ->assertSee('Página 2 de 2')
+            ->assertDontSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('previousPage')
+            ->assertSee('Página 1 de 2')
+            ->call('nextPage')
+            ->set('buscar', 'MATCH-ONLY')
+            ->assertSee('Página 1 de 1')
+            ->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->set('buscar', 'NO-MATCH')
+            ->assertSee('0 resultados')
+            ->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false);
+    }
+
     public function test_sort_cycles_and_applies_to_the_whole_result_with_stable_ties(): void
     {
         $user = User::factory()->create(['activo' => true]);
@@ -97,11 +124,23 @@ class EquiposTableTest extends TestCase
             ->set('filters.estado', 'disponible')
             ->assertSee('aria-controls="equipos-filters"', false)
             ->assertSee('Filtros, 5 activos')
+            ->assertSee('Mostrando 1 de 1 equipos encontrados')
+            ->assertSee('Categoría: '.$match->categoria->nombre)
+            ->assertSee('Tipo de equipo: '.$match->tipoEquipo->nombre)
+            ->assertSee('Marca: '.$match->marca->nombre)
+            ->assertSee('Procedencia: '.$match->departamento->nombre)
+            ->assertSee('Estado: Disponible')
             ->assertViewHas('equipos', fn ($rows): bool => $rows->total() === 1 && $rows->first()->id === $match->id);
+        $component->call('setPage', 2)->call('removeFilter', 'marca')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'MATCH')
+            ->assertSet('filters.marca', '')->assertSet('filters.estado', 'disponible')
+            ->assertDontSee('equipos-export-filter-marca" type="hidden" name="marca" value="'.$match->marca_id.'"', false)
+            ->assertDontSee('equipos-filter-chip-marca', false)
+            ->assertSee('Filtros, 4 activos');
         $component->call('setPage', 2)->set('filters.estado', 'inactivo')->assertSet('paginators.page', 1)
             ->assertViewHas('equipos', fn ($rows): bool => $rows->total() === 0)
             ->call('clearFilters')->assertSet('buscar', '')
-            ->assertDontSee('Filtros, 5 activos')
+            ->assertDontSee('equipos-filter-chip-', false)
             ->assertViewHas('equipos', fn ($rows): bool => $rows->total() === 2);
     }
 

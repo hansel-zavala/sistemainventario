@@ -36,6 +36,11 @@
         <p role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ $message }}</p>
     @enderror
 
+    @php
+        $filterLabels = ['categoria' => 'Categoría', 'tipo' => 'Tipo de equipo', 'marca' => 'Marca', 'departamento' => 'Procedencia'];
+        $statusLabels = ['disponible' => 'Disponible', 'prestado' => 'Prestado', 'inactivo' => 'Inactivo'];
+    @endphp
+
     <x-data-table
         id="equipos"
         label="Tabla de equipos tecnológicos"
@@ -55,7 +60,7 @@
         </x-slot:export>
 
         <x-slot:filters>
-            @foreach (['categoria' => 'Categoría', 'tipo' => 'Tipo de equipo', 'marca' => 'Marca', 'departamento' => 'Procedencia'] as $name => $label)
+            @foreach ($filterLabels as $name => $label)
                 <label wire:key="filter-{{ $name }}" class="text-sm font-medium text-muted">{{ $label }}
                     <select wire:model.live="filters.{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                         <option value="">{{ $name === 'tipo' ? 'Todos' : 'Todas' }}</option>
@@ -68,16 +73,34 @@
             <label class="text-sm font-medium text-muted sm:col-span-2">Estado
                 <select wire:model.live="filters.estado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
-                    <option value="disponible">Disponible</option>
-                    <option value="prestado">Prestado</option>
-                    <option value="inactivo">Inactivo</option>
+                    @foreach ($statusLabels as $value => $label)
+                        <option wire:key="equipos-estado-{{ $value }}" value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
                 </select>
             </label>
         </x-slot:filters>
 
         <x-slot:summary>
-            {{ $equipos->total() }} equipos · {{ $sortColumn ? 'Orden: '.\App\Services\EquiposTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Ingresos más recientes' }}
+            Mostrando {{ $equipos->count() }} de {{ $equipos->total() }} equipos encontrados
         </x-slot:summary>
+
+        <x-slot:filterChips>
+            @foreach ($filterLabels + ['estado' => 'Estado'] as $name => $label)
+                @continue(blank($filters[$name] ?? null))
+                @php
+                    $value = $name === 'estado'
+                        ? ($statusLabels[$filters[$name]] ?? null)
+                        : $filterOptions[$name]->firstWhere('id', $filters[$name])?->nombre;
+                @endphp
+                @continue($value === null)
+                <button type="button" wire:key="equipos-filter-chip-{{ $name }}" wire:click="removeFilter('{{ $name }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $label }}: {{ $value }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $label }}: {{ $value }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
 
         @forelse ($equipos as $equipo)
             <tr wire:key="equipment-{{ $equipo->id }}" class="hover:bg-canvas/60">
@@ -113,7 +136,21 @@
             <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron equipos con estos filtros.</td></tr>
         @endforelse
 
-        <x-slot:pagination>{{ $equipos->links() }}</x-slot:pagination>
+        <x-slot:pagination>
+            <nav aria-label="Paginación de equipos" class="flex flex-wrap items-center justify-between gap-3">
+                <span class="text-sm text-muted" aria-live="polite">
+                    {{ $equipos->total() === 0 ? '0 resultados' : 'Página '.$equipos->currentPage().' de '.$equipos->lastPage() }}
+                </span>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" wire:click="previousPage" @disabled($equipos->onFirstPage())
+                        @unless($equipos->onFirstPage()) wire:loading.attr="disabled" wire:target="previousPage, nextPage" @endunless
+                        class="secondary-button disabled:cursor-not-allowed disabled:opacity-50">Anterior</button>
+                    <button type="button" wire:click="nextPage" @disabled(! $equipos->hasMorePages())
+                        @if ($equipos->hasMorePages()) wire:loading.attr="disabled" wire:target="previousPage, nextPage" @endif
+                        class="secondary-button disabled:cursor-not-allowed disabled:opacity-50">Siguiente</button>
+                </div>
+            </nav>
+        </x-slot:pagination>
     </x-data-table>
 
 

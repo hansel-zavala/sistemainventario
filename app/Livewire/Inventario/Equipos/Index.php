@@ -57,7 +57,9 @@ class Index extends Component
 
     public array $visibleColumns = ['numero_inventario', 'tipo_equipo', 'marca', 'numero_serie', 'departamento', 'disponibilidad'];
 
-    public array $filters = ['categoria' => '', 'tipo' => '', 'marca' => '', 'departamento' => '', 'estado' => ''];
+    private const DEFAULT_FILTERS = ['categoria' => '', 'tipo' => '', 'marca' => '', 'departamento' => '', 'estado' => ''];
+
+    public array $filters = self::DEFAULT_FILTERS;
 
     public function updatedFilters(): void
     {
@@ -87,7 +89,15 @@ class Index extends Component
     public function clearFilters(): void
     {
         $this->buscar = '';
-        $this->filters = ['categoria' => '', 'tipo' => '', 'marca' => '', 'departamento' => '', 'estado' => ''];
+        $this->filters = self::DEFAULT_FILTERS;
+        $this->resetPage();
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(array_key_exists($filter, self::DEFAULT_FILTERS), 422);
+
+        $this->filters[$filter] = self::DEFAULT_FILTERS[$filter];
         $this->resetPage();
     }
 

@@ -110,8 +110,11 @@
     @if (isset($filters) && ! $collapsibleFilters)
         <div class="flex flex-wrap items-end gap-3 border-b border-line p-4">{{ $filters }}</div>
     @endif
-    <div class="flex items-center justify-between gap-3 px-4 py-2 text-xs text-muted" aria-live="polite">
-        <span>{{ $summary ?? '' }}</span>
+    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-xs text-muted">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2" aria-live="polite">
+            <span>{{ $summary ?? '' }}</span>
+            {{ $filterChips ?? '' }}
+        </div>
         <span wire:loading>Actualizando…</span>
     </div>
     <div class="overflow-x-auto">
