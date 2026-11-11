@@ -270,6 +270,25 @@ class InventoryExportTest extends TestCase
             ->assertOk()->assertSee('Sigla')->assertSee('TIC')->assertDontSee('CON')->assertDontSee('Soporte');
     }
 
+    public function test_brand_status_filter_and_pagination_stay_in_sync(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Marca::factory()->create(['nombre' => 'Dell', 'activo' => true]);
+
+        Livewire::actingAs($user)->test(MarcasIndex::class)
+            ->set('buscar', 'Dell')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="marcas-filters"', false)
+            ->assertSee('Filtros, 1 activo')->assertSee('Estado: Activas')
+            ->assertSee('Página 1 de 1')->assertSee('wire:click="previousPage" disabled', false)
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('setPage', 2)->call('removeStatusFilter')
+            ->assertSet('paginators.page', 1)->assertSet('buscar', 'Dell')->assertSet('filtroEstado', '')
+            ->assertDontSee('marcas-filter-chip-estado', false)
+            ->set('filtroEstado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('marcas-filter-chip-estado', false)->assertSee('Página 1 de 1');
+    }
+
     public function test_brands_keep_column_selection_in_sync_with_the_export_form(): void
     {
         $user = User::factory()->create(['activo' => true]);
