@@ -395,6 +395,77 @@ class InventoryExportTest extends TestCase
             ->assertDontSee('tipos-equipo-export-column-creado_por', false);
     }
 
+    #[TestWith(['Negro'])]
+    #[TestWith(['Cian'])]
+    #[TestWith(['Magenta'])]
+    #[TestWith(['Amarillo'])]
+    public function test_new_ink_accepts_each_standard_color(string $color): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+
+        Livewire::actingAs($user)->test(TintasIndex::class)
+            ->call('crearTinta')->assertSet('color', '')->assertSee('Seleccione un color')
+            ->assertSee('value="'.$color.'"', false)
+            ->set('nombre', 'Tinta nueva')->set('color', $color)
+            ->call('guardarTinta')->assertHasNoErrors();
+
+        $this->assertDatabaseHas('tintas', ['nombre' => 'Tinta nueva', 'color' => $color]);
+    }
+
+    public function test_new_ink_rejects_missing_and_nonstandard_colors(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Tinta::factory()->create(['color' => 'Azul claro', 'creado_por' => $user->id]);
+
+        Livewire::actingAs($user)->test(TintasIndex::class)
+            ->call('crearTinta')->set('nombre', 'Tinta nueva')
+            ->call('guardarTinta')->assertHasErrors(['color' => 'required'])
+            ->set('color', 'Azul claro')->call('guardarTinta')->assertHasErrors('color');
+
+        $this->assertDatabaseMissing('tintas', ['nombre' => 'Tinta nueva']);
+    }
+
+    public function test_ink_edit_can_keep_its_saved_color_or_change_to_a_standard_color(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $ink = Tinta::factory()->create(['color' => 'Azul claro', 'creado_por' => $user->id]);
+
+        $component = Livewire::actingAs($user)->test(TintasIndex::class)
+            ->call('editarTinta', $ink->id)->assertSet('color', 'Azul claro')
+            ->set('color', 'Naranja')->call('guardarTinta')->assertHasErrors('color')
+            ->set('color', 'Azul claro')->set('nombre', 'Referencia nueva')
+            ->call('guardarTinta')->assertHasNoErrors();
+
+        $this->assertDatabaseHas('tintas', ['id' => $ink->id, 'nombre' => 'Referencia nueva', 'color' => 'Azul claro']);
+
+        $component->call('editarTinta', $ink->id)->set('color', 'Cian')
+            ->call('guardarTinta')->assertHasNoErrors();
+
+        $this->assertDatabaseHas('tintas', ['id' => $ink->id, 'color' => 'Cian']);
+    }
+
+    public function test_ink_filter_chips_preserve_search_and_keep_pagination_visible(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        Tinta::factory()->count(11)->create(['presentacion' => 'Botella 65 ml', 'creado_por' => $user->id]);
+        Tinta::factory()->create(['color' => 'Cian', 'creado_por' => $user->id]);
+
+        Livewire::actingAs($user)->test(TintasIndex::class)
+            ->set('buscar', '65 ml')->set('filtroColor', 'Negro')->set('filtroEstado', 'activo')
+            ->assertSee('aria-controls="tintas-filters"', false)
+            ->assertSee('Filtros, 2 activos')->assertSee('Color: Negro')->assertSee('Estado: Activas')
+            ->assertSee('Mostrando 10 de 11 tintas encontradas')
+            ->assertDontSee('wire:click="nextPage" disabled', false)
+            ->call('nextPage')->assertSee('Página 2 de 2')->assertSee('wire:click="nextPage" disabled', false)
+            ->call('removeFilter', 'filtroColor')->assertSee('Página 1 de 2')
+            ->assertSet('buscar', '65 ml')->assertSet('filtroEstado', 'activo')
+            ->assertDontSee('Color: Negro')->assertSee('Filtros, 1 activo')
+            ->set('filtroEstado', 'inactivo')->assertSee('0 resultados')
+            ->assertSee('wire:click="previousPage" disabled', false)->assertSee('wire:click="nextPage" disabled', false)
+            ->call('clearFilters')->assertDontSee('tintas-filter-chip-', false)
+            ->assertSee('Mostrando 10 de 12 tintas encontradas');
+    }
+
     public function test_ink_table_sorts_fractional_stock_and_keeps_export_columns_in_sync(): void
     {
         $user = User::factory()->create(['activo' => true]);

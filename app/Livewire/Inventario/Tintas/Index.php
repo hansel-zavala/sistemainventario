@@ -24,6 +24,8 @@ class Index extends Component
 
     public const COLUMNS = TintasTable::COLUMNS;
 
+    private const STANDARD_COLORS = ['Negro', 'Cian', 'Magenta', 'Amarillo'];
+
     public array $visibleColumns = ['nombre', 'color', 'presentacion', 'existencia', 'activo'];
 
     public string $sortColumn = '';
@@ -64,6 +66,14 @@ class Index extends Component
     public function clearFilters(): void
     {
         $this->reset('buscar', 'filtroColor', 'filtroEstado');
+        $this->resetPage();
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, ['filtroColor', 'filtroEstado'], true), 422);
+
+        $this->reset($filter);
         $this->resetPage();
     }
 
@@ -272,6 +282,16 @@ class Index extends Component
         ];
     }
 
+    /** @return list<string> */
+    private function colorOptions(?string $savedColor): array
+    {
+        if ($savedColor !== null && ! in_array($savedColor, self::STANDARD_COLORS, true)) {
+            return [...self::STANDARD_COLORS, $savedColor];
+        }
+
+        return self::STANDARD_COLORS;
+    }
+
     public function guardarTinta(): void
     {
         $this->validate();
@@ -279,7 +299,7 @@ class Index extends Component
         $esCreacion = $this->tintaId === null;
 
         $nombre = trim($this->nombre);
-        $color = trim($this->color);
+        $color = $this->color;
 
         $marcaId = $this->marcaId !== ''
             ? (int) $this->marcaId
@@ -313,6 +333,12 @@ class Index extends Component
                     ->firstOrFail();
             }
 
+            if (! in_array($color, $this->colorOptions($tinta?->color), true)) {
+                throw ValidationException::withMessages([
+                    'color' => 'Seleccione un color de la lista.',
+                ]);
+            }
+
             /* Validar que no exista una tinta duplicada */
 
             $duplicada = Tinta::query()
@@ -322,7 +348,7 @@ class Index extends Component
                 )
                 ->whereRaw(
                     'LOWER(TRIM(color)) = ?',
-                    [mb_strtolower($color)]
+                    [mb_strtolower(trim($color))]
                 )
                 ->when(
                     $marcaId !== null,
@@ -672,12 +698,18 @@ class Index extends Component
                 ->values();
         }
 
+        $savedColor = $this->mostrarModal && $this->tintaId !== null
+            ? Tinta::query()->whereKey($this->tintaId)->value('color')
+            : null;
+        $colorOptions = $this->colorOptions($savedColor);
+
         return view(
             'livewire.inventario.tintas.index',
             compact(
                 'tintas',
                 'marcas',
                 'colores',
+                'colorOptions',
                 'eventosHistorial'
             )
         );

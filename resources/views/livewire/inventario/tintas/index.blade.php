@@ -32,6 +32,14 @@
     @endif
 
 
+    @php
+        $statusOptions = ['activo' => 'Activas', 'inactivo' => 'Inactivas'];
+        $activeFilters = array_filter([
+            'filtroColor' => $filtroColor === '' ? null : 'Color: '.$filtroColor,
+            'filtroEstado' => isset($statusOptions[$filtroEstado]) ? 'Estado: '.$statusOptions[$filtroEstado] : null,
+        ]);
+    @endphp
+
     <x-data-table
         id="tintas"
         label="Tabla de tintas"
@@ -42,6 +50,8 @@
         search-label="Buscar tinta"
         search-placeholder="Referencia, marca, color..."
         default-order-label="orden por nombre"
+        :collapsible-filters="true"
+        :active-filter-count="count($activeFilters)"
     >
         <x-slot:export>
             <x-table-export id="tintas" :action="route('inventario.tintas.exportar')"
@@ -50,7 +60,7 @@
         </x-slot:export>
 
         <x-slot:filters>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Color
+            <label class="text-sm font-medium text-muted sm:col-span-2">Color
                 <select wire:model.live="filtroColor" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
                     @foreach ($colores as $color)
@@ -58,19 +68,30 @@
                     @endforeach
                 </select>
             </label>
-            <label class="min-w-40 flex-1 text-xs font-medium text-muted">Estado
+            <label class="text-sm font-medium text-muted sm:col-span-2">Estado
                 <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
-                    <option value="activo">Activas</option>
-                    <option value="inactivo">Inactivas</option>
+                    @foreach ($statusOptions as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
                 </select>
             </label>
-            <button type="button" wire:click="clearFilters" class="secondary-button">Limpiar</button>
         </x-slot:filters>
 
         <x-slot:summary>
-            {{ $tintas->total() }} tintas · {{ $sortColumn ? 'Orden: '.\App\Services\TintasTable::COLUMNS[$sortColumn].' ('.($sortDirection === 'asc' ? 'ascendente' : 'descendente').')' : 'Orden por nombre' }}
+            Mostrando {{ $tintas->count() }} de {{ $tintas->total() }} tintas encontradas
         </x-slot:summary>
+
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $filter => $label)
+                <button type="button" wire:key="tintas-filter-chip-{{ $filter }}" wire:click="removeFilter('{{ $filter }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $label }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $label }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
 
         @forelse ($tintas as $tinta)
             <tr wire:key="tintas-row-{{ $tinta->id }}" class="hover:bg-canvas/60">
@@ -135,7 +156,9 @@
             <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron tintas registradas.</td></tr>
         @endforelse
 
-        <x-slot:pagination>{{ $tintas->links() }}</x-slot:pagination>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$tintas" label="Paginación de tintas" />
+        </x-slot:pagination>
     </x-data-table>
 
     @if ($mostrarModal)
@@ -230,18 +253,24 @@
 
                     <div>
 
-                        <label class="mb-1 block text-sm font-medium text-gray-700">
+                        <label for="tinta-color" class="mb-1 block text-sm font-medium text-gray-700">
                             Color *
                         </label>
 
-                        <input
-                            type="text"
+                        <select
+                            id="tinta-color"
                             wire:model="color"
-                            placeholder="Ej. Negro"
+                            required
+                            @error('color') aria-invalid="true" aria-describedby="tinta-color-error" @enderror
                             class="w-full rounded-lg border border-gray-300 px-4 py-2">
+                            <option value="" disabled>Seleccione un color</option>
+                            @foreach ($colorOptions as $option)
+                                <option value="{{ $option }}">{{ $option }}</option>
+                            @endforeach
+                        </select>
 
                         @error('color')
-                        <p class="mt-1 text-sm text-red-600">
+                        <p id="tinta-color-error" class="mt-1 text-sm text-red-600">
                             {{ $message }}
                         </p>
                         @enderror
