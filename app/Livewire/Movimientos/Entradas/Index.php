@@ -7,8 +7,11 @@ use App\Models\Insumo;
 use App\Models\MovimientoInventario;
 use App\Models\MovimientoInventarioDetalle;
 use App\Models\Tinta;
+use App\Services\EntradasTable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -21,18 +24,40 @@ class Index extends Component
 
     public string $buscar = '';
 
+    private const FILTERS = ['tipoArticulo', 'desde', 'hasta'];
+
+    public string $tipoArticulo = '';
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
     public bool $mostrarModal = false;
 
     public string $observaciones = '';
 
     public array $detalles = [];
 
-
-    public function updatingBuscar(): void
+    public function updating(string $property): void
     {
+        if ($property === 'buscar' || in_array($property, self::FILTERS, true)) {
+            $this->resetPage();
+        }
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, self::FILTERS, true), 422);
+
+        $this->reset($filter);
         $this->resetPage();
     }
 
+    public function clearFilters(): void
+    {
+        $this->reset(self::FILTERS);
+        $this->resetPage();
+    }
 
     public function nuevaEntrada(): void
     {
@@ -43,7 +68,6 @@ class Index extends Component
         $this->mostrarModal = true;
     }
 
-
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
@@ -53,13 +77,11 @@ class Index extends Component
         $this->resetFormulario();
     }
 
-
     private function resetFormulario(): void
     {
         $this->observaciones = '';
         $this->detalles = [];
     }
-
 
     public function agregarDetalle(): void
     {
@@ -69,7 +91,6 @@ class Index extends Component
             'cantidad' => '',
         ];
     }
-
 
     public function eliminarDetalle(int $indice): void
     {
@@ -85,7 +106,6 @@ class Index extends Component
 
         $this->resetValidation();
     }
-
 
     public function updatedDetalles(
         $value,
@@ -111,7 +131,6 @@ class Index extends Component
             }
         }
     }
-
 
     protected function rules(): array
     {
@@ -146,36 +165,26 @@ class Index extends Component
         ];
     }
 
-
     protected function messages(): array
     {
         return [
-            'observaciones.max' =>
-                'Las observaciones no pueden superar los 2000 caracteres.',
+            'observaciones.max' => 'Las observaciones no pueden superar los 2000 caracteres.',
 
-            'detalles.*.tipo_item.required' =>
-                'Debe seleccionar el tipo de artículo.',
+            'detalles.*.tipo_item.required' => 'Debe seleccionar el tipo de artículo.',
 
-            'detalles.*.tipo_item.in' =>
-                'El tipo de artículo seleccionado no es válido.',
+            'detalles.*.tipo_item.in' => 'El tipo de artículo seleccionado no es válido.',
 
-            'detalles.*.item_id.required' =>
-                'Debe seleccionar un artículo.',
+            'detalles.*.item_id.required' => 'Debe seleccionar un artículo.',
 
-            'detalles.*.item_id.integer' =>
-                'El artículo seleccionado no es válido.',
+            'detalles.*.item_id.integer' => 'El artículo seleccionado no es válido.',
 
-            'detalles.*.cantidad.required' =>
-                'Debe ingresar la cantidad.',
+            'detalles.*.cantidad.required' => 'Debe ingresar la cantidad.',
 
-            'detalles.*.cantidad.numeric' =>
-                'La cantidad debe ser numérica.',
+            'detalles.*.cantidad.numeric' => 'La cantidad debe ser numérica.',
 
-            'detalles.*.cantidad.gt' =>
-                'La cantidad debe ser mayor que cero.',
+            'detalles.*.cantidad.gt' => 'La cantidad debe ser mayor que cero.',
         ];
     }
-
 
     public function guardarEntrada(): void
     {
@@ -187,8 +196,8 @@ class Index extends Component
 
             $claveArticulo =
                 $detalle['tipo_item']
-                . '-'
-                . $detalle['item_id'];
+                .'-'
+                .$detalle['item_id'];
 
             if (in_array($claveArticulo, $articulosUsados, true)) {
 
@@ -220,7 +229,6 @@ class Index extends Component
                 (int) $detalle['item_id']
             );
 
-
             if (! $item) {
 
                 $this->addError(
@@ -230,7 +238,6 @@ class Index extends Component
 
                 continue;
             }
-
 
             /*
             | Herramienta individual no aumenta cantidad.
@@ -247,7 +254,6 @@ class Index extends Component
                     'Las herramientas individuales no reciben entradas por cantidad.'
                 );
             }
-
 
             /*
             | Validar decimales para herramientas e insumos.
@@ -276,7 +282,6 @@ class Index extends Component
                 }
             }
 
-
             /*
             | Las entradas de tinta representan botellas completas.
             */
@@ -296,11 +301,9 @@ class Index extends Component
             }
         }
 
-
         if ($this->getErrorBag()->isNotEmpty()) {
             return;
         }
-
 
         /*
         |--------------------------------------------------------------------------
@@ -313,18 +316,14 @@ class Index extends Component
             $movimiento = MovimientoInventario::create([
                 'tipo' => 'entrada',
 
-                'fecha_movimiento' =>
-                    now(),
+                'fecha_movimiento' => now(),
 
-                'observaciones' =>
-                    trim($this->observaciones) !== ''
+                'observaciones' => trim($this->observaciones) !== ''
                         ? trim($this->observaciones)
                         : null,
 
-                'registrado_por' =>
-                    Auth::id(),
+                'registrado_por' => Auth::id(),
             ]);
-
 
             foreach ($this->detalles as $detalle) {
 
@@ -334,20 +333,16 @@ class Index extends Component
                 $cantidad =
                     (float) $detalle['cantidad'];
 
-
                 $item = $this->buscarItemParaActualizar(
                     $tipo,
                     (int) $detalle['item_id']
                 );
 
-
                 if (! $item) {
                     throw ValidationException::withMessages([
-                        'detalles' =>
-                            'Uno de los artículos ya no se encuentra disponible.',
+                        'detalles' => 'Uno de los artículos ya no se encuentra disponible.',
                     ]);
                 }
-
 
                 $existenciaAnterior =
                     $this->obtenerExistencia(
@@ -355,16 +350,13 @@ class Index extends Component
                         $item
                     );
 
-
                 $this->aplicarEntrada(
                     $tipo,
                     $item,
                     $cantidad
                 );
 
-
                 $item->refresh();
-
 
                 $existenciaPosterior =
                     $this->obtenerExistencia(
@@ -372,41 +364,31 @@ class Index extends Component
                         $item
                     );
 
-
                 MovimientoInventarioDetalle::create([
-                    'movimiento_inventario_id' =>
-                        $movimiento->id,
+                    'movimiento_inventario_id' => $movimiento->id,
 
-                    'tipo_item' =>
-                        $tipo,
+                    'tipo_item' => $tipo,
 
-                    'item_id' =>
-                        $item->id,
+                    'item_id' => $item->id,
 
-                    'cantidad' =>
-                        $cantidad,
+                    'cantidad' => $cantidad,
 
-                    'existencia_anterior' =>
-                        $existenciaAnterior,
+                    'existencia_anterior' => $existenciaAnterior,
 
-                    'existencia_posterior' =>
-                        $existenciaPosterior,
+                    'existencia_posterior' => $existenciaPosterior,
                 ]);
             }
         });
-
 
         session()->flash(
             'mensaje',
             'Entrada de inventario registrada correctamente.'
         );
 
-
         $this->cerrarModal();
 
         $this->resetPage();
     }
-
 
     private function buscarItem(
         string $tipo,
@@ -414,30 +396,26 @@ class Index extends Component
     ) {
         return match ($tipo) {
 
-            'herramienta' =>
-                Herramienta::query()
-                    ->whereKey($id)
-                    ->where('activo', true)
-                    ->with('unidadMedida')
-                    ->first(),
+            'herramienta' => Herramienta::query()
+                ->whereKey($id)
+                ->where('activo', true)
+                ->with('unidadMedida')
+                ->first(),
 
-            'insumo' =>
-                Insumo::query()
-                    ->whereKey($id)
-                    ->where('activo', true)
-                    ->with('unidadMedida')
-                    ->first(),
+            'insumo' => Insumo::query()
+                ->whereKey($id)
+                ->where('activo', true)
+                ->with('unidadMedida')
+                ->first(),
 
-            'tinta' =>
-                Tinta::query()
-                    ->whereKey($id)
-                    ->where('activo', true)
-                    ->first(),
+            'tinta' => Tinta::query()
+                ->whereKey($id)
+                ->where('activo', true)
+                ->first(),
 
             default => null,
         };
     }
-
 
     private function buscarItemParaActualizar(
         string $tipo,
@@ -445,24 +423,18 @@ class Index extends Component
     ) {
         $query = match ($tipo) {
 
-            'herramienta' =>
-                Herramienta::query(),
+            'herramienta' => Herramienta::query(),
 
-            'insumo' =>
-                Insumo::query(),
+            'insumo' => Insumo::query(),
 
-            'tinta' =>
-                Tinta::query(),
+            'tinta' => Tinta::query(),
 
-            default =>
-                null,
+            default => null,
         };
-
 
         if (! $query) {
             return null;
         }
-
 
         return $query
             ->whereKey($id)
@@ -470,7 +442,6 @@ class Index extends Component
             ->lockForUpdate()
             ->first();
     }
-
 
     private function obtenerExistencia(
         string $tipo,
@@ -480,11 +451,9 @@ class Index extends Component
         return match ($tipo) {
 
             'herramienta',
-            'insumo' =>
-                (float) $item->cantidad_actual,
+            'insumo' => (float) $item->cantidad_actual,
 
-            'tinta' =>
-                (float) $item->botellas_completas
+            'tinta' => (float) $item->botellas_completas
                 + (
                     (float) $item->porcentaje_botella_abierta
                     / 100
@@ -493,7 +462,6 @@ class Index extends Component
             default => 0,
         };
     }
-
 
     private function aplicarEntrada(
         string $tipo,
@@ -507,72 +475,33 @@ class Index extends Component
         ) {
 
             $item->update([
-                'cantidad_actual' =>
-                    (float) $item->cantidad_actual
+                'cantidad_actual' => (float) $item->cantidad_actual
                     + $cantidad,
             ]);
 
             return;
         }
 
-
         if ($tipo === 'tinta') {
 
             $item->update([
-                'botellas_completas' =>
-                    (int) $item->botellas_completas
+                'botellas_completas' => (int) $item->botellas_completas
                     + (int) $cantidad,
             ]);
         }
     }
 
-
-    public function render()
+    public function render(EntradasTable $table): View
     {
-        $movimientos = MovimientoInventario::query()
-            ->where('tipo', 'entrada')
-
-            ->with([
-                'usuario',
-                'detalles',
-            ])
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-
-                    $buscar =
-                        '%' . trim($this->buscar) . '%';
-
-                    $query->where(
-                        function ($subQuery) use ($buscar) {
-
-                            $subQuery
-                                ->where(
-                                    'observaciones',
-                                    'like',
-                                    $buscar
-                                )
-
-                                ->orWhereHas(
-                                    'usuario',
-                                    function ($usuarioQuery) use ($buscar) {
-
-                                        $usuarioQuery->where(
-                                            'name',
-                                            'like',
-                                            $buscar
-                                        );
-                                    }
-                                );
-                        }
-                    );
-                }
-            )
-
-            ->latest('fecha_movimiento')
+        $filters = [
+            'tipoArticulo' => $this->tipoArticulo,
+            'desde' => $this->desde,
+            'hasta' => $this->hasta,
+        ];
+        $filterErrors = Validator::make($filters, EntradasTable::filterRules($filters), EntradasTable::FILTER_MESSAGES)->errors();
+        $movimientos = $table->query($filterErrors->isEmpty() ? [...$filters, 'buscar' => $this->buscar] : [])
+            ->when($filterErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))
             ->paginate(10);
-
 
         $herramientas = Herramienta::query()
             ->where('activo', true)
@@ -584,13 +513,11 @@ class Index extends Component
             ->orderBy('nombre')
             ->get();
 
-
         $insumos = Insumo::query()
             ->where('activo', true)
             ->with('unidadMedida')
             ->orderBy('nombre')
             ->get();
-
 
         $tintas = Tinta::query()
             ->where('activo', true)
@@ -599,11 +526,12 @@ class Index extends Component
             ->orderBy('color')
             ->get();
 
-
         return view(
             'livewire.movimientos.entradas.index',
             compact(
                 'movimientos',
+                'filters',
+                'filterErrors',
                 'herramientas',
                 'insumos',
                 'tintas'

@@ -32,27 +32,64 @@
     @endif
 
 
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    @php
+        $types = \App\Services\EntradasTable::TYPES;
+        $columns = \App\Services\EntradasTable::COLUMNS;
+        $activeFilters = array_filter([
+            'tipoArticulo' => isset($types[$tipoArticulo]) ? 'Tipo de artículo: '.$types[$tipoArticulo] : null,
+            'desde' => $desde !== '' ? 'Desde: '.$desde : null,
+            'hasta' => $hasta !== '' ? 'Hasta: '.$hasta : null,
+        ]);
+    @endphp
 
-        <label class="mb-1 block text-sm font-medium text-gray-700">
-            Buscar
-        </label>
-
-        <input
-            type="text"
-            wire:model.live.debounce.300ms="buscar"
-            placeholder="Observaciones o usuario..."
-            class="w-full rounded-lg border border-gray-300 px-4 py-2"
-        >
-
-    </div>
-
-
-    <div class="space-y-4">
+    <x-data-table id="entradas" label="Listado de entradas" :columns="$columns"
+        :show-columns="false" :sortable="false" :show-actions="false"
+        :collapsible-filters="true" :active-filter-count="count($activeFilters)"
+        :export-disabled="$filterErrors->isNotEmpty()" search-label="Buscar entradas"
+        search-placeholder="Artículo, código, color, observaciones o usuario...">
+        <x-slot:filters>
+            <label class="text-sm font-medium text-muted sm:col-span-2">Tipo de artículo
+                <select wire:model.live="tipoArticulo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    @foreach ($types as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            @foreach (['desde' => 'Desde', 'hasta' => 'Hasta'] as $field => $label)
+                <label wire:key="entradas-filter-{{ $field }}" class="text-sm font-medium text-muted">{{ $label }}
+                    <input type="date" wire:model.live="{{ $field }}" @if ($filterErrors->has($field)) aria-invalid="true" aria-describedby="entradas-filter-error" @endif
+                        class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                </label>
+            @endforeach
+        </x-slot:filters>
+        <x-slot:export>
+            <x-table-export id="entradas" :action="route('movimientos.entradas.exportar')" :buscar="$buscar"
+                :visible-columns="array_keys($columns)" :export-filters="$filters" :show-date-fields="false" />
+        </x-slot:export>
+        <x-slot:summary>
+            @if ($filterErrors->isNotEmpty())
+                <span id="entradas-filter-error" class="text-red-700">{{ $filterErrors->first() }}</span>
+            @else
+                Mostrando {{ $movimientos->count() }} de {{ $movimientos->total() }} entradas encontradas
+            @endif
+        </x-slot:summary>
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $filter => $label)
+                <button type="button" wire:key="entradas-filter-chip-{{ $filter }}" wire:click="removeFilter('{{ $filter }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $label }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $label }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
+        <x-slot:content>
+    <div class="space-y-4 p-4">
 
         @forelse ($movimientos as $movimiento)
 
-            <div class="rounded-xl bg-white shadow-sm">
+            <div wire:key="entradas-movimiento-{{ $movimiento->id }}" class="rounded-xl bg-white shadow-sm">
 
                 <div class="border-b border-gray-200 bg-gray-50 px-6 py-4">
 
@@ -73,7 +110,7 @@
                         <div class="text-sm text-gray-600">
                             Registrado por:
                             <span class="font-medium">
-                                {{ $movimiento->usuario->name }}
+                                {{ $movimiento->usuario?->name ?? 'Usuario no disponible' }}
                             </span>
                         </div>
 
@@ -119,24 +156,14 @@
 
                             @foreach ($movimiento->detalles as $detalle)
 
-                                @php
-                                    $item = $detalle->obtenerItem();
-                                @endphp
-
-                                <tr>
+                                <tr wire:key="entradas-articulo-{{ $detalle->id }}">
 
                                     <td class="px-6 py-3 text-gray-600">
-                                        {{ ucfirst($detalle->tipo_item) }}
+                                        {{ $types[$detalle->tipo_item] ?? $detalle->tipo_item }}
                                     </td>
 
                                     <td class="px-6 py-3 font-medium text-gray-800">
-                                        {{ $item?->nombre ?? 'Artículo no disponible' }}
-
-                                        @if ($detalle->tipo_item === 'tinta' && $item)
-                                            <span class="text-sm font-normal text-gray-500">
-                                                — {{ $item->color }}
-                                            </span>
-                                        @endif
+                                        {{ \App\Services\EntradasTable::articleName($detalle) }}
                                     </td>
 
                                     <td class="px-6 py-3 text-right text-gray-600">
@@ -181,7 +208,7 @@
         @empty
 
             <div class="rounded-xl bg-white px-6 py-12 text-center text-gray-500 shadow-sm">
-                No existen entradas registradas.
+                {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver las entradas.' : 'No se encontraron entradas.' }}
             </div>
 
         @endforelse
@@ -189,9 +216,11 @@
     </div>
 
 
-    <div class="mt-6">
-        {{ $movimientos->links() }}
-    </div>
+        </x-slot:content>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$movimientos" label="Paginación de entradas" />
+        </x-slot:pagination>
+    </x-data-table>
 
 
     @if ($mostrarModal)

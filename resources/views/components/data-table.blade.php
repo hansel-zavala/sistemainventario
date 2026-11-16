@@ -15,6 +15,7 @@
     'defaultOrderLabel' => 'ingresos más recientes',
     'collapsibleFilters' => false,
     'activeFilterCount' => 0,
+    'exportDisabled' => false,
 ])
 
 @php
@@ -95,11 +96,11 @@
             @endif
             @isset($export)
                 <div class="relative" @click.outside="if (menu === 'export') menu = ''">
-                    <button type="button" class="secondary-button" @click="menu = menu === 'export' ? '' : 'export'"
+                    <button type="button" class="secondary-button disabled:cursor-not-allowed disabled:opacity-50" @disabled($exportDisabled) @click="menu = menu === 'export' ? '' : 'export'"
                         :aria-expanded="menu === 'export'" aria-controls="{{ $id }}-export">
                         <x-icon name="download" /> Exportar
                     </button>
-                    <div id="{{ $id }}-export" x-show="menu === 'export'" style="display:none"
+                    <div id="{{ $id }}-export" x-show="menu === 'export' && ! @js($exportDisabled)" style="display:none"
                         class="absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-3rem)] rounded-lg border border-line bg-surface p-4 shadow-lg">
                         {{ $export }}
                     </div>
@@ -117,6 +118,9 @@
         </div>
         <span wire:loading>Actualizando…</span>
     </div>
+    @isset($content)
+        {{ $content }}
+    @else
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead class="border-y border-line bg-canvas text-ink">
@@ -147,6 +151,7 @@
             </tbody>
         </table>
     </div>
+    @endisset
     @isset($pagination)
         <div class="border-t border-line px-4 py-4">{{ $pagination }}</div>
     @endisset

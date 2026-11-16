@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordRecoveryController;
+use App\Http\Controllers\EntradasExportController;
 use App\Http\Controllers\EquiposExportController;
 use App\Http\Controllers\InventoryExportController;
 use App\Http\Controllers\PerfilController;
@@ -156,6 +157,9 @@ Route::middleware('auth')->group(function () {
         '/movimientos/entradas',
         EntradasIndex::class
     )->name('movimientos.entradas');
+
+    Route::get('/movimientos/entradas/exportar', EntradasExportController::class)
+        ->name('movimientos.entradas.exportar');
 
     Route::get(
         '/movimientos/salidas',
