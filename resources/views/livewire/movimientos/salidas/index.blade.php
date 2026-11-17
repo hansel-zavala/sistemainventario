@@ -37,30 +37,89 @@
     @endif
 
 
-    {{-- Buscador --}}
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
+    @php
+        /** @var string $orden */
+        /** @var string $tipoArticulo */
+        /** @var string $destino */
 
-        <label class="mb-1 block text-sm font-medium text-gray-700">
-            Buscar
-        </label>
+        $types = \App\Services\MovimientosTable::TYPES;
+        $columns = \App\Services\SalidasTable::COLUMNS;
+        $orders = \App\Services\MovimientosTable::ORDERS;
 
-        <input
-            type="text"
-            wire:model.live.debounce.300ms="buscar"
-            placeholder="Observaciones o usuario..."
-            class="w-full rounded-lg border border-gray-300 px-4 py-2"
-        >
+        $activeFilters = array_filter([
+            'orden' => $orden !== \App\Services\MovimientosTable::DEFAULT_ORDER && isset($orders[$orden]) ? 'Orden: '.$orders[$orden] : null,
+            'tipoArticulo' => isset($types[$tipoArticulo]) ? 'Tipo de artículo: '.$types[$tipoArticulo] : null,
+            'desde' => $desde !== '' ? 'Desde: '.$desde : null,
+            'hasta' => $hasta !== '' ? 'Hasta: '.$hasta : null,
+            'destino' => isset($destinationOptions[$destino]) ? 'Departamento destino: '.$destinationOptions[$destino] : null,
+        ]);
+    @endphp
 
-    </div>
-
-
-    {{-- Historial --}}
-    <div class="space-y-4">
+    <x-data-table id="salidas" label="Listado de salidas" :columns="$columns"
+        :show-columns="false" :sortable="false" :show-actions="false"
+        :collapsible-filters="true" :active-filter-count="count($activeFilters)"
+        :export-disabled="$filterErrors->isNotEmpty()" search-label="Buscar salidas"
+        search-placeholder="Artículo, código, color, observaciones o usuario...">
+        <x-slot:filters>
+            <label class="text-sm font-medium text-muted sm:col-span-2">Tipo de artículo
+                <select wire:model.live="tipoArticulo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    @foreach ($types as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="text-sm font-medium text-muted sm:col-span-2">Departamento destino
+                <select wire:model.live="destino" @if ($filterErrors->has('destino')) aria-invalid="true" aria-describedby="salidas-filter-error" @endif
+                    class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    @foreach ($destinationOptions as $value => $label)
+                        <option wire:key="salidas-destino-{{ $value }}" value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="text-sm font-medium text-muted sm:col-span-2">Orden por fecha
+                <select wire:model.live="orden" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    @foreach ($orders as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            @foreach (['desde' => 'Desde', 'hasta' => 'Hasta'] as $field => $label)
+                <label wire:key="salidas-filter-{{ $field }}" class="text-sm font-medium text-muted">{{ $label }}
+                    <input type="date" wire:model.live="{{ $field }}" @if ($filterErrors->has($field)) aria-invalid="true" aria-describedby="salidas-filter-error" @endif
+                        class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                </label>
+            @endforeach
+        </x-slot:filters>
+        <x-slot:export>
+            <x-table-export id="salidas" :action="route('movimientos.salidas.exportar')" :buscar="$buscar"
+                :visible-columns="array_keys($columns)" :export-filters="$filters" :show-date-fields="false" />
+        </x-slot:export>
+        <x-slot:summary>
+            @if ($filterErrors->isNotEmpty())
+                <span id="salidas-filter-error" class="text-red-700">{{ $filterErrors->first() }}</span>
+            @else
+                Mostrando {{ $movimientos->count() }} de {{ $movimientos->total() }} salidas encontradas
+            @endif
+        </x-slot:summary>
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $filter => $label)
+                <button type="button" wire:key="salidas-filter-chip-{{ $filter }}" wire:click="removeFilter('{{ $filter }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $label }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $label }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
+        <x-slot:content>
+    <div class="space-y-4 p-4">
 
 
         @forelse ($movimientos as $movimiento)
 
-            <div class="rounded-xl bg-white shadow-sm">
+            <div wire:key="salidas-movimiento-{{ $movimiento->id }}" class="rounded-xl bg-white shadow-sm">
 
 
                 <div class="border-b border-gray-200 bg-gray-50 px-6 py-4">
@@ -90,13 +149,7 @@
                                     Destino:
                                 </span>
 
-                                {{ $movimiento->departamentoDestino?->nombre ?? 'No disponible' }}
-
-                                @if ($movimiento->departamentoDestino?->sigla)
-
-                                    ({{ $movimiento->departamentoDestino->sigla }})
-
-                                @endif
+                                {{ \App\Services\SalidasTable::destinationName($movimiento->departamentoDestino) }}
 
                             </div>
 
@@ -178,13 +231,7 @@
 
                             @foreach ($movimiento->detalles as $detalle)
 
-                                @php
-                                    $item =
-                                        $detalle->obtenerItem();
-                                @endphp
-
-
-                                <tr>
+                                <tr wire:key="salidas-articulo-{{ $detalle->id }}">
 
                                     <td class="px-6 py-3 text-gray-600">
 
@@ -197,21 +244,7 @@
 
                                     <td class="px-6 py-3 font-medium text-gray-800">
 
-                                        {{ $item?->nombre
-                                            ?? 'Artículo no disponible'
-                                        }}
-
-
-                                        @if (
-                                            $detalle->tipo_item === 'tinta'
-                                            && $item
-                                        )
-
-                                            <span class="text-sm font-normal text-gray-500">
-                                                — {{ $item->color }}
-                                            </span>
-
-                                        @endif
+                                        {{ \App\Services\SalidasTable::articleName($detalle) }}
 
                                     </td>
 
@@ -301,7 +334,7 @@
 
             <div class="rounded-xl bg-white px-6 py-12 text-center text-gray-500 shadow-sm">
 
-                No existen salidas registradas.
+                {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver las salidas.' : 'No se encontraron salidas.' }}
 
             </div>
 
@@ -310,9 +343,11 @@
     </div>
 
 
-    <div class="mt-6">
-        {{ $movimientos->links() }}
-    </div>
+        </x-slot:content>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$movimientos" label="Paginación de salidas" />
+        </x-slot:pagination>
+    </x-data-table>
 
 
     {{-- Modal --}}

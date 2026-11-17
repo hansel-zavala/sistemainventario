@@ -24,13 +24,15 @@ class Index extends Component
 
     public string $buscar = '';
 
-    private const FILTERS = ['tipoArticulo', 'desde', 'hasta'];
+    private const FILTERS = ['tipoArticulo', 'desde', 'hasta', 'orden'];
 
     public string $tipoArticulo = '';
 
     public string $desde = '';
 
     public string $hasta = '';
+
+    public string $orden = EntradasTable::DEFAULT_ORDER;
 
     public bool $mostrarModal = false;
 
@@ -497,6 +499,7 @@ class Index extends Component
             'tipoArticulo' => $this->tipoArticulo,
             'desde' => $this->desde,
             'hasta' => $this->hasta,
+            'orden' => $this->orden,
         ];
         $filterErrors = Validator::make($filters, EntradasTable::filterRules($filters), EntradasTable::FILTER_MESSAGES)->errors();
         $movimientos = $table->query($filterErrors->isEmpty() ? [...$filters, 'buscar' => $this->buscar] : [])

@@ -33,9 +33,16 @@
 
 
     @php
-        $types = \App\Services\EntradasTable::TYPES;
+        /** @var string $orden */
+        /** @var string $tipoArticulo */
+        /** @var string $destino */
+
+        $types = \App\Services\MovimientosTable::TYPES;
         $columns = \App\Services\EntradasTable::COLUMNS;
+        $orders = \App\Services\MovimientosTable::ORDERS;
+
         $activeFilters = array_filter([
+            'orden' => $orden !== \App\Services\MovimientosTable::DEFAULT_ORDER && isset($orders[$orden]) ? 'Orden: '.$orders[$orden] : null,
             'tipoArticulo' => isset($types[$tipoArticulo]) ? 'Tipo de artículo: '.$types[$tipoArticulo] : null,
             'desde' => $desde !== '' ? 'Desde: '.$desde : null,
             'hasta' => $hasta !== '' ? 'Hasta: '.$hasta : null,
@@ -52,6 +59,13 @@
                 <select wire:model.live="tipoArticulo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
                     @foreach ($types as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="text-sm font-medium text-muted sm:col-span-2">Orden por fecha
+                <select wire:model.live="orden" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    @foreach ($orders as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
                     @endforeach
                 </select>

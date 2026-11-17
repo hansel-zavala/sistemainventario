@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Livewire\Movimientos\Entradas\Index;
+use App\Livewire\Movimientos\Salidas\Index as SalidasIndex;
 use App\Models\Herramienta;
 use App\Models\Insumo;
 use App\Models\MovimientoInventario;
@@ -117,9 +118,34 @@ class EntradasTableTest extends TestCase
         $this->assertDatabaseHas('insumos', ['id' => $item->id, 'cantidad_actual' => 13]);
     }
 
-    private function entry(User $user, string $date, array $items, ?string $notes = null): MovimientoInventario
+    #[TestWith(['entradas', 'entrada', Index::class])]
+    #[TestWith(['salidas', 'salida', SalidasIndex::class])]
+    public function test_movement_order_applies_to_pagination_and_export(string $module, string $type, string $component): void
     {
-        $entry = MovimientoInventario::create(['tipo' => 'entrada', 'registrado_por' => $user->id, 'fecha_movimiento' => $date, 'observaciones' => $notes]);
+        $user = User::factory()->create(['activo' => true]);
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])->assertRedirect(route('dashboard'));
+        $item = Insumo::factory()->create();
+        $items = [['insumo', $item->id]];
+        $newest = $this->entry($user, '2026-11-02 00:00:00', $items, 'Registro reciente', $type);
+        $oldest = $this->entry($user, '2026-11-01 00:00:00', $items, 'Primer registro antiguo', $type);
+        for ($index = 0; $index < 9; $index++) {
+            $this->entry($user, '2026-11-01 00:00:00', $items, 'Otro registro antiguo', $type);
+        }
+
+        Livewire::actingAs($user)->test($component)
+            ->assertViewHas('movimientos', fn ($rows): bool => $rows->first()->id === $newest->id)
+            ->call('nextPage')->set('orden', 'antiguos')->assertSet('paginators.page', 1)
+            ->assertViewHas('movimientos', fn ($rows): bool => $rows->first()->id === $oldest->id)
+            ->assertSee('Orden: Más antiguos')->assertSee('name="orden" value="antiguos"', false)
+            ->call('removeFilter', 'orden')->assertSet('orden', 'recientes');
+
+        $this->get(route("movimientos.$module.exportar", ['format' => 'print', 'orden' => 'antiguos', 'columns' => ['observaciones']]))
+            ->assertOk()->assertSeeInOrder(['Primer registro antiguo', 'Otro registro antiguo', 'Registro reciente']);
+    }
+
+    private function entry(User $user, string $date, array $items, ?string $notes = null, string $type = 'entrada'): MovimientoInventario
+    {
+        $entry = MovimientoInventario::create(['tipo' => $type, 'registrado_por' => $user->id, 'fecha_movimiento' => $date, 'observaciones' => $notes]);
         foreach ($items as [$type, $id]) {
             $entry->detalles()->create(['tipo_item' => $type, 'item_id' => $id, 'cantidad' => 2, 'existencia_anterior' => 1, 'existencia_posterior' => 3]);
         }

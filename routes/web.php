@@ -6,6 +6,7 @@ use App\Http\Controllers\EntradasExportController;
 use App\Http\Controllers\EquiposExportController;
 use App\Http\Controllers\InventoryExportController;
 use App\Http\Controllers\PerfilController;
+use App\Http\Controllers\SalidasExportController;
 use App\Livewire\Administracion\Auditorias\Index as AuditoriasIndex;
 use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
 use App\Livewire\Catalogos\Categorias\Index as CategoriasIndex;
@@ -165,6 +166,9 @@ Route::middleware('auth')->group(function () {
         '/movimientos/salidas',
         SalidasIndex::class
     )->name('movimientos.salidas');
+
+    Route::get('/movimientos/salidas/exportar', SalidasExportController::class)
+        ->name('movimientos.salidas.exportar');
 
     Route::get(
         '/movimientos/prestamos',

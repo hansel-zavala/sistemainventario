@@ -9,8 +9,11 @@ use App\Models\MovimientoInventario;
 use App\Models\MovimientoInventarioDetalle;
 use App\Models\PrestamoDetalle;
 use App\Models\Tinta;
+use App\Services\SalidasTable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -21,7 +24,19 @@ class Index extends Component
 {
     use WithPagination;
 
+    private const FILTERS = ['tipoArticulo', 'desde', 'hasta', 'destino', 'orden'];
+
     public string $buscar = '';
+
+    public string $tipoArticulo = '';
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public string $orden = SalidasTable::DEFAULT_ORDER;
+
+    public string $destino = '';
 
     public bool $mostrarModal = false;
 
@@ -35,8 +50,24 @@ class Index extends Component
 
     public array $detalles = [];
 
-    public function updatingBuscar(): void
+    public function updating(string $property): void
     {
+        if ($property === 'buscar' || in_array($property, self::FILTERS, true)) {
+            $this->resetPage();
+        }
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, self::FILTERS, true), 422);
+
+        $this->reset($filter);
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset(self::FILTERS);
         $this->resetPage();
     }
 
@@ -695,57 +726,18 @@ class Index extends Component
         }
     }
 
-    public function render()
+    public function render(SalidasTable $table): View
     {
-        /*
-        |--------------------------------------------------------------------------
-        | Historial de salidas
-        |--------------------------------------------------------------------------
-        */
-
-        $movimientos = MovimientoInventario::query()
-            ->where('tipo', 'salida')
-
-            ->with([
-                'usuario',
-                'departamentoDestino',
-                'detalles',
-            ])
-
-            ->when(
-                $this->buscar,
-                function ($query) {
-
-                    $buscar =
-                        '%'.trim($this->buscar).'%';
-
-                    $query->where(
-                        function ($subQuery) use ($buscar) {
-
-                            $subQuery
-                                ->where(
-                                    'observaciones',
-                                    'like',
-                                    $buscar
-                                )
-
-                                ->orWhereHas(
-                                    'usuario',
-                                    function ($usuarioQuery) use ($buscar) {
-
-                                        $usuarioQuery->where(
-                                            'name',
-                                            'like',
-                                            $buscar
-                                        );
-                                    }
-                                );
-                        }
-                    );
-                }
-            )
-
-            ->latest('fecha_movimiento')
+        $filters = [
+            'tipoArticulo' => $this->tipoArticulo,
+            'desde' => $this->desde,
+            'hasta' => $this->hasta,
+            'orden' => $this->orden,
+            'destino' => $this->destino,
+        ];
+        $filterErrors = Validator::make($filters, SalidasTable::filterRules($filters), SalidasTable::FILTER_MESSAGES)->errors();
+        $movimientos = $table->query($filterErrors->isEmpty() ? [...$filters, 'buscar' => $this->buscar] : [])
+            ->when($filterErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))
             ->paginate(10);
 
         /*
@@ -817,10 +809,12 @@ class Index extends Component
 
             ->get();
 
-        $departamentos = Departamento::query()
-            ->where('activo', true)
-            ->orderBy('nombre')
-            ->get();
+        $destinationDepartments = Departamento::query()->orderBy('nombre')->orderBy('id')->get(['id', 'nombre', 'sigla', 'activo']);
+        $departamentos = $destinationDepartments->where('activo', true);
+        $destinationOptions = [SalidasTable::NO_DESTINATION => SalidasTable::destinationName(null)]
+            + $destinationDepartments->mapWithKeys(fn (Departamento $department): array => [
+                $department->id => SalidasTable::destinationName($department),
+            ])->all();
 
         // Cantidades pendientes de devolución por herramienta.
         $pendientesHerramientas = PrestamoDetalle::query()
@@ -861,6 +855,9 @@ class Index extends Component
             'livewire.movimientos.salidas.index',
             compact(
                 'movimientos',
+                'filters',
+                'filterErrors',
+                'destinationOptions',
                 'herramientas',
                 'insumos',
                 'tintas',
