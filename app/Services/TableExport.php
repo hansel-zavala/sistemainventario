@@ -51,7 +51,7 @@ class TableExport
     }
 
     /** @param callable(list<string>): LazyCollection<int, list<string>> $makeRows */
-    public function respondWithRows(array $labels, array $filters, callable $makeRows, string $title, string $filename, string $emptyMessage = 'No se encontraron registros con estos filtros.'): View|StreamedResponse
+    public function respondWithRows(array $labels, array $filters, callable $makeRows, string $title, string $filename, string $emptyMessage = 'No se encontraron registros con estos filtros.', string $dateLabel = 'Fecha de registro'): View|StreamedResponse
     {
         $columns = array_values(array_intersect(array_keys($labels), $filters['columns']));
         $headers = array_map(fn (string $column): string => $labels[$column], $columns);
@@ -65,6 +65,7 @@ class TableExport
                 'rows' => $makeRows($columns),
                 'desde' => $filters['desde'] ?? null,
                 'hasta' => $filters['hasta'] ?? null,
+                'dateLabel' => $dateLabel,
             ]);
         }
 

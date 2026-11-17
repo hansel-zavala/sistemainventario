@@ -42,8 +42,32 @@ class PrestamosTable
     /** @return Builder<Prestamo> */
     public function query(array $filters): Builder
     {
-        $type = $filters['tipoArticulo'] ?? '';
+        $query = $this->loanQuery($filters);
         $state = $filters['filtroEstado'] ?? '';
+
+        if ($state !== '') {
+            $query->where('estado', $state === 'vencido' ? 'activo' : $state);
+        }
+        if ($state === 'vencido') {
+            $query->where('fecha_prevista_devolucion', '<', now());
+        }
+        if (! empty($filters['desde'])) {
+            $query->whereDate('fecha_prestamo', '>=', $filters['desde']);
+        }
+        if (! empty($filters['hasta'])) {
+            $query->whereDate('fecha_prestamo', '<=', $filters['hasta']);
+        }
+
+        $direction = ($filters['orden'] ?? MovimientosTable::DEFAULT_ORDER) === 'antiguos' ? 'asc' : 'desc';
+        $query->orderBy('fecha_prestamo', $direction)->orderBy('id', $direction);
+
+        return $query;
+    }
+
+    /** @return Builder<Prestamo> */
+    protected function loanQuery(array $filters): Builder
+    {
+        $type = $filters['tipoArticulo'] ?? '';
         $search = trim($filters['buscar'] ?? '');
         $query = Prestamo::query()->with(['departamentoDestino:id,nombre', 'usuario:id,name',
             'detalles' => fn ($details) => $details->orderBy('id'),
@@ -75,30 +99,14 @@ class PrestamosTable
             });
         }
 
-        if ($state !== '') {
-            $query->where('estado', $state === 'vencido' ? 'activo' : $state);
-        }
-        if ($state === 'vencido') {
-            $query->where('fecha_prevista_devolucion', '<', now());
-        }
         if (! empty($filters['destino'])) {
             $query->where('departamento_destino_id', (int) $filters['destino']);
         }
-        if (! empty($filters['desde'])) {
-            $query->whereDate('fecha_prestamo', '>=', $filters['desde']);
-        }
-        if (! empty($filters['hasta'])) {
-            $query->whereDate('fecha_prestamo', '<=', $filters['hasta']);
-        }
-
-        $direction = ($filters['orden'] ?? MovimientosTable::DEFAULT_ORDER) === 'antiguos' ? 'asc' : 'desc';
-
-        $query->orderBy('fecha_prestamo', $direction)->orderBy('id', $direction);
 
         return $query;
     }
 
-    private function restrictType(Builder $details, string $type): void
+    protected function restrictType(Builder $details, string $type): void
     {
         if ($type === 'equipo') {
             $details->whereNotNull('equipo_id');

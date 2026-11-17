@@ -17,7 +17,7 @@
 <body>
     <div class="print-controls"><button type="button" onclick="window.print()">Imprimir / Guardar como PDF</button></div>
     <h1>{{ $title }}</h1>
-    <p>Fecha de registro: {{ $desde ?: 'Sin inicio' }} — {{ $hasta ?: 'Sin límite' }}</p>
+    <p>{{ $dateLabel ?? 'Fecha de registro' }}: {{ $desde ?: 'Sin inicio' }} — {{ $hasta ?: 'Sin límite' }}</p>
     <table>
         <thead><tr>@foreach ($headers as $header)<th scope="col">{{ $header }}</th>@endforeach</tr></thead>
         <tbody>

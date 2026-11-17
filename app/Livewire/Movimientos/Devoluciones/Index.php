@@ -2,11 +2,16 @@
 
 namespace App\Livewire\Movimientos\Devoluciones;
 
+use App\Models\Departamento;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
 use App\Models\PrestamoDevolucion;
+use App\Services\DevolucionesTable;
+use App\Services\MovimientosTable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -17,9 +22,23 @@ class Index extends Component
 {
     use WithPagination;
 
+    private const FILTERS = ['filtroEstado', 'tipoArticulo', 'desde', 'hasta', 'destino', 'orden', 'tipoFecha'];
+
+    public string $tipoArticulo = '';
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public string $destino = '';
+
+    public string $orden = MovimientosTable::DEFAULT_ORDER;
+
+    public string $tipoFecha = DevolucionesTable::DEFAULT_DATE;
+
     public string $buscar = '';
 
-    public string $filtroEstado = 'pendientes';
+    public string $filtroEstado = DevolucionesTable::DEFAULT_STATE;
 
     public bool $mostrarModal = false;
 
@@ -31,13 +50,24 @@ class Index extends Component
 
     public array $observacionesDetalle = [];
 
-    public function updatingBuscar(): void
+    public function updating(string $property): void
     {
+        if ($property === 'buscar' || in_array($property, self::FILTERS, true)) {
+            $this->resetPage();
+        }
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, self::FILTERS, true), 422);
+
+        $this->reset($filter);
         $this->resetPage();
     }
 
-    public function updatingFiltroEstado(): void
+    public function clearFilters(): void
     {
+        $this->reset(self::FILTERS);
         $this->resetPage();
     }
 
@@ -332,69 +362,24 @@ class Index extends Component
         );
     }
 
-    public function render()
+    public function render(DevolucionesTable $table): View
     {
-        $prestamos = Prestamo::query()
-            ->with([
-                'departamentoDestino',
-                'usuario',
-                'detalles.herramienta.marca',
-                'detalles.equipo.marca',
-                'detalles.equipo.tipoEquipo',
-                'detalles.devoluciones.usuario',
-            ])
-            ->when(
-                $this->filtroEstado === 'pendientes',
-                fn ($query) => $query
-                    ->where('estado', 'activo')
-                    ->whereHas(
-                        'detalles',
-                        fn ($q) => $q->where('estado', 'prestado')
-                    )
-            )
-            ->when(
-                $this->filtroEstado === 'completados',
-                fn ($query) => $query
-                    ->where('estado', 'completado')
-            )
-            ->when(
-                trim($this->buscar) !== '',
-                function ($query) {
-                    $buscar = '%'.trim($this->buscar).'%';
-
-                    $query->where(function ($q) use ($buscar) {
-                        $q->where('persona_recibe', 'like', $buscar)
-                            ->orWhereHas(
-                                'departamentoDestino',
-                                fn ($d) => $d->where(
-                                    'nombre', 'like', $buscar
-                                )
-                            )
-                            ->orWhereHas(
-                                'detalles.herramienta',
-                                fn ($h) => $h
-                                    ->where('nombre', 'like', $buscar)
-                                    ->orWhere('codigo_interno', 'like', $buscar)
-                            )
-                            ->orWhereHas(
-                                'detalles.equipo',
-                                fn ($e) => $e
-                                    ->where(
-                                        'numero_inventario',
-                                        'like',
-                                        $buscar
-                                    )
-                                    ->orWhere(
-                                        'modelo',
-                                        'like',
-                                        $buscar
-                                    )
-                            );
-                    });
-                }
-            )
-            ->latest('fecha_prestamo')
-            ->paginate(10);
+        $filters = [
+            'tipoArticulo' => $this->tipoArticulo,
+            'filtroEstado' => $this->filtroEstado,
+            'desde' => $this->desde,
+            'hasta' => $this->hasta,
+            'destino' => $this->destino,
+            'orden' => $this->orden,
+            'tipoFecha' => $this->tipoFecha,
+        ];
+        $filterErrors = Validator::make($filters, DevolucionesTable::filterRules($filters), DevolucionesTable::FILTER_MESSAGES)->errors();
+        $query = $table->query($filterErrors->isEmpty() ? [...$filters, 'buscar' => $this->buscar] : []);
+        if ($filterErrors->isNotEmpty()) {
+            $query->whereRaw('1 = 0');
+        }
+        $prestamos = $query->paginate(10);
+        $destinationOptions = Departamento::query()->orderBy('nombre')->orderBy('id')->pluck('nombre', 'id')->all();
 
         $prestamoSeleccionado = null;
 
@@ -412,7 +397,7 @@ class Index extends Component
 
         return view(
             'livewire.movimientos.devoluciones.index',
-            compact('prestamos', 'prestamoSeleccionado')
+            compact('prestamos', 'prestamoSeleccionado', 'filters', 'filterErrors', 'destinationOptions')
         );
     }
 }

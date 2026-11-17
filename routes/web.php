@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordRecoveryController;
+use App\Http\Controllers\DevolucionesExportController;
 use App\Http\Controllers\EntradasExportController;
 use App\Http\Controllers\EquiposExportController;
 use App\Http\Controllers\InventoryExportController;
@@ -183,6 +184,9 @@ Route::middleware('auth')->group(function () {
         '/movimientos/devoluciones',
         DevolucionesIndex::class
     )->name('movimientos.devoluciones');
+
+    Route::get('/movimientos/devoluciones/exportar', DevolucionesExportController::class)
+        ->name('movimientos.devoluciones.exportar');
 
     Route::get(
         '/historial/movimientos',
