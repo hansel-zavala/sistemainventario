@@ -23,20 +23,23 @@
 @endphp
 
 <section {{ $attributes->class(['rounded-xl border border-line bg-surface shadow-sm'])->merge(['aria-label' => $label]) }}
-    id="{{ $id }}" data-storage-key="{{ $id }}.visibleColumns"
+    id="{{ $id }}"
     x-data="{ menu: '' }"
-    x-init="
-        try {
-            const saved = JSON.parse(localStorage.getItem($el.dataset.storageKey));
-            if (Array.isArray(saved) && @js($showColumns)) $wire.setVisibleColumns(saved);
-        } catch (e) {}
-        if (@js($showColumns)) {
+    @if ($showColumns)
+        data-storage-key="{{ $id }}.visibleColumns"
+        x-init="(() => {
             const storageKey = $el.dataset.storageKey;
+
+            try {
+                const saved = JSON.parse(localStorage.getItem(storageKey));
+                if (Array.isArray(saved)) $wire.setVisibleColumns(saved);
+            } catch {}
+
             $watch('$wire.visibleColumns', value => {
-                try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch (e) {}
+                try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch {}
             });
-        }
-    "
+        })()"
+    @endif
     @keydown.escape.window="menu = ''">
     <div class="relative flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center sm:justify-between">
         @if ($showSearch)

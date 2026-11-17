@@ -78,7 +78,9 @@ abstract class MovimientosTable
 
         $direction = ($filters['orden'] ?? self::DEFAULT_ORDER) === 'antiguos' ? 'asc' : 'desc';
 
-        return $query->orderBy('fecha_movimiento', $direction)->orderBy('id', $direction);
+        $query->orderBy('fecha_movimiento', $direction)->orderBy('id', $direction);
+
+        return $query;
     }
 
     public static function articleName(MovimientoInventarioDetalle $detail): string

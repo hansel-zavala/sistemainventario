@@ -7,9 +7,15 @@ use App\Models\Equipo;
 use App\Models\Herramienta;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
+use App\Services\MovimientosTable;
+use App\Services\PrestamosTable;
+use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -19,6 +25,18 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    private const FILTERS = ['filtroEstado', 'tipoArticulo', 'desde', 'hasta', 'destino', 'orden'];
+
+    public string $tipoArticulo = '';
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public string $destino = '';
+
+    public string $orden = MovimientosTable::DEFAULT_ORDER;
 
     public string $buscar = '';
 
@@ -36,13 +54,24 @@ class Index extends Component
 
     public array $activosSeleccionados = [];
 
-    public function updatingBuscar(): void
+    public function updating(string $property): void
     {
+        if ($property === 'buscar' || in_array($property, self::FILTERS, true)) {
+            $this->resetPage();
+        }
+    }
+
+    public function removeFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, self::FILTERS, true), 422);
+
+        $this->reset($filter);
         $this->resetPage();
     }
 
-    public function updatingFiltroEstado(): void
+    public function clearFilters(): void
     {
+        $this->reset(self::FILTERS);
         $this->resetPage();
     }
 
@@ -403,63 +432,62 @@ class Index extends Component
         );
     }
 
-    public function render()
+    public function render(PrestamosTable $table): View
     {
-        $prestamos = Prestamo::query()
-            ->with([
-                'departamentoDestino',
-                'usuario',
-                'detalles.herramienta.marca',
-                'detalles.equipo.marca',
-                'detalles.equipo.tipoEquipo',
-            ])
-            ->when($this->buscar !== '', function ($query) {
-                $buscar = '%'.trim($this->buscar).'%';
+        $filters = [
+            'tipoArticulo' => $this->tipoArticulo,
+            'filtroEstado' => $this->filtroEstado,
+            'desde' => $this->desde,
+            'hasta' => $this->hasta,
+            'destino' => $this->destino,
+            'orden' => $this->orden,
+        ];
+        $filterErrors = Validator::make($filters, PrestamosTable::filterRules($filters), PrestamosTable::FILTER_MESSAGES)->errors();
+        $prestamos = $this->paginatePrestamos($table, $filters, $filterErrors->isEmpty());
 
-                $query->where(function ($q) use ($buscar) {
-                    $q->where('persona_recibe', 'like', $buscar)
-                        ->orWhereHas(
-                            'departamentoDestino',
-                            fn ($d) => $d->where('nombre', 'like', $buscar)
-                        )
-                        ->orWhereHas(
-                            'detalles.herramienta',
-                            fn ($h) => $h
-                                ->where('nombre', 'like', $buscar)
-                                ->orWhere('codigo_interno', 'like', $buscar)
-                        )
-                        ->orWhereHas(
-                            'detalles.equipo',
-                            fn ($e) => $e
-                                ->where('numero_inventario', 'like', $buscar)
-                                ->orWhere('modelo', 'like', $buscar)
-                        );
-                });
-            })
-            ->when(
-                $this->filtroEstado === 'activo',
-                fn ($q) => $q->where('estado', 'activo')
-            )
-            ->when(
-                $this->filtroEstado === 'completado',
-                fn ($q) => $q->where('estado', 'completado')
-            )
-            ->when(
-                $this->filtroEstado === 'vencido',
-                fn ($q) => $q
-                    ->where('estado', 'activo')
-                    ->where('fecha_prevista_devolucion', '<', now())
-            )
-            ->latest('fecha_prestamo')
-            ->paginate(10);
+        $destinationDepartments = Departamento::query()->orderBy('nombre')->orderBy('id')->get(['id', 'nombre', 'sigla', 'activo']);
+        $departamentos = $destinationDepartments->where('activo', true);
+        $destinationOptions = $destinationDepartments->pluck('nombre', 'id')->all();
 
-        $departamentos = Departamento::query()
-            ->where('activo', true)
-            ->orderBy('nombre')
-            ->get();
+        $herramientasIndividuales = $this->herramientasIndividualesDisponibles();
+        [$herramientasCantidad, $disponiblesCantidad] = $this->herramientasPorCantidadDisponibles();
+        $equipos = $this->equiposDisponibles();
 
-        // Herramientas individuales sin préstamo pendiente.
-        $herramientasIndividuales = Herramienta::query()
+        return view(
+            'livewire.movimientos.prestamos.index',
+            compact(
+                'prestamos',
+                'filters',
+                'filterErrors',
+                'destinationOptions',
+                'departamentos',
+                'herramientasIndividuales',
+                'herramientasCantidad',
+                'disponiblesCantidad',
+                'equipos'
+            )
+        );
+    }
+
+    /**
+     * @param  array{tipoArticulo: string, filtroEstado: string, desde: string, hasta: string, destino: string, orden: string}  $filters
+     * @return LengthAwarePaginator<int, Prestamo>
+     */
+    private function paginatePrestamos(PrestamosTable $table, array $filters, bool $validFilters): LengthAwarePaginator
+    {
+        $query = $table->query($validFilters ? [...$filters, 'buscar' => $this->buscar] : []);
+
+        if (! $validFilters) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query->paginate(10);
+    }
+
+    /** @return Collection<int, Herramienta> */
+    private function herramientasIndividualesDisponibles(): Collection
+    {
+        return Herramienta::query()
             ->where('activo', true)
             ->where('tipo_control', 'individual')
             ->where('cantidad_actual', '>=', 1)
@@ -470,15 +498,20 @@ class Index extends Component
             ->with('marca')
             ->orderBy('nombre')
             ->get();
+    }
 
-        // Herramientas controladas por cantidad.
-        $herramientasCantidad = Herramienta::query()
+    /** @return array{Collection<int, Herramienta>, array<int, int|float>} */
+    private function herramientasPorCantidadDisponibles(): array
+    {
+        $query = Herramienta::query()
             ->where('activo', true)
             ->where('tipo_control', 'cantidad')
             ->where('cantidad_actual', '>', 0)
-            ->with(['marca', 'unidadMedida'])
-            ->orderBy('nombre')
-            ->get();
+            ->with(['marca', 'unidadMedida']);
+        $query->orderBy('nombre');
+
+        /** @var Collection<int, Herramienta> $herramientasCantidad */
+        $herramientasCantidad = $query->get();
 
         // Calcular pendientes en una consulta agrupada.
         $pendientes = PrestamoDetalle::query()
@@ -507,11 +540,17 @@ class Index extends Component
             );
         }
 
-        $herramientasCantidad = $herramientasCantidad
-            ->filter(fn ($h) => $disponiblesCantidad[$h->id] > 0
-            );
+        $herramientasCantidad = $herramientasCantidad->filter(
+            fn (Herramienta $herramienta): bool => $disponiblesCantidad[$herramienta->id] > 0
+        );
 
-        $equipos = Equipo::query()
+        return [$herramientasCantidad, $disponiblesCantidad];
+    }
+
+    /** @return Collection<int, Equipo> */
+    private function equiposDisponibles(): Collection
+    {
+        return Equipo::query()
             ->where('activo', true)
             ->whereDoesntHave(
                 'prestamos',
@@ -520,17 +559,5 @@ class Index extends Component
             ->with(['marca', 'tipoEquipo'])
             ->orderBy('numero_inventario')
             ->get();
-
-        return view(
-            'livewire.movimientos.prestamos.index',
-            compact(
-                'prestamos',
-                'departamentos',
-                'herramientasIndividuales',
-                'herramientasCantidad',
-                'disponiblesCantidad',
-                'equipos'
-            )
-        );
     }
 }

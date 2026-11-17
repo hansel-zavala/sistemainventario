@@ -25,40 +25,95 @@
         </div>
     @endif
 
-    {{-- Filtros --}}
-    <div class="mb-6 rounded-xl bg-white p-5 shadow-sm">
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Buscar
-                </label>
-                <input
-                    type="text"
-                    wire:model.live.debounce.300ms="buscar"
-                    placeholder="Persona, departamento, herramienta o inventario..."
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
-            </div>
+    @php
+        /** @var string $filtroEstado */
+        /** @var string $orden */
+        /** @var string $tipoArticulo */
+        /** @var string $destino */
+        
+        $types = \App\Services\PrestamosTable::TYPES;
+        $columns = \App\Services\PrestamosTable::COLUMNS;
+        $orders = \App\Services\MovimientosTable::ORDERS;
 
-            <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">
-                    Estado
-                </label>
-                <select
-                    wire:model.live="filtroEstado"
-                    class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                >
+        $states = \App\Services\PrestamosTable::STATES;
+        $activeFilters = array_filter([
+            'filtroEstado' => isset($states[$filtroEstado]) ? 'Estado: '.$states[$filtroEstado] : null,
+            'orden' => $orden !== \App\Services\MovimientosTable::DEFAULT_ORDER && isset($orders[$orden]) ? 'Orden: '.$orders[$orden] : null,
+            'tipoArticulo' => isset($types[$tipoArticulo]) ? 'Tipo de activo: '.$types[$tipoArticulo] : null,
+            'desde' => $desde !== '' ? 'Desde: '.$desde : null,
+            'hasta' => $hasta !== '' ? 'Hasta: '.$hasta : null,
+            'destino' => isset($destinationOptions[$destino]) ? 'Departamento destino: '.$destinationOptions[$destino] : null,
+        ]);
+    @endphp
+
+    <x-data-table id="prestamos" label="Listado de préstamos" :columns="$columns"
+        :show-columns="false" :sortable="false" :show-actions="false"
+        :collapsible-filters="true" :active-filter-count="count($activeFilters)"
+        :export-disabled="$filterErrors->isNotEmpty()" search-label="Buscar préstamos"
+        search-placeholder="Activo, código, persona, departamento o usuario...">
+        <x-slot:filters>
+            <label class="text-sm font-medium text-muted sm:col-span-1">Estado
+                <select wire:model.live="filtroEstado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
                     <option value="">Todos</option>
-                    <option value="activo">Activos</option>
-                    <option value="vencido">Vencidos</option>
-                    <option value="completado">Completados</option>
+                    @foreach ($states as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
                 </select>
-            </div>
-        </div>
-    </div>
-
-    {{-- Historial --}}
-    <div class="space-y-4">
+            </label>
+            <label class="text-sm font-medium text-muted sm:col-span-1">Tipo de activo
+                <select wire:model.live="tipoArticulo" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    @foreach ($types as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="text-sm font-medium text-muted sm:col-span-1">Departamento destino
+                <select wire:model.live="destino" @if ($filterErrors->has('destino')) aria-invalid="true" aria-describedby="prestamos-filter-error" @endif
+                    class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    <option value="">Todos</option>
+                    @foreach ($destinationOptions as $value => $label)
+                        <option wire:key="prestamos-destino-{{ $value }}" value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            <label class="text-sm font-medium text-muted sm:col-span-1">Orden por fecha
+                <select wire:model.live="orden" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                    @foreach ($orders as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
+            @foreach (['desde' => 'Desde', 'hasta' => 'Hasta'] as $field => $label)
+                <label wire:key="prestamos-filter-{{ $field }}" class="text-sm font-medium text-muted">{{ $label }}
+                    <input type="date" wire:model.live="{{ $field }}" @if ($filterErrors->has($field)) aria-invalid="true" aria-describedby="prestamos-filter-error" @endif
+                        class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                </label>
+            @endforeach
+        </x-slot:filters>
+        <x-slot:export>
+            <x-table-export id="prestamos" :action="route('movimientos.prestamos.exportar')" :buscar="$buscar"
+                :visible-columns="array_keys($columns)" :export-filters="$filters" :show-date-fields="false" />
+        </x-slot:export>
+        <x-slot:summary>
+            @if ($filterErrors->isNotEmpty())
+                <span id="prestamos-filter-error" class="text-red-700">{{ $filterErrors->first() }}</span>
+            @else
+                Mostrando {{ $prestamos->count() }} de {{ $prestamos->total() }} préstamos encontrados
+            @endif
+        </x-slot:summary>
+        <x-slot:filterChips>
+            @foreach ($activeFilters as $filter => $label)
+                <button type="button" wire:key="prestamos-filter-chip-{{ $filter }}" wire:click="removeFilter('{{ $filter }}')"
+                    wire:loading.attr="disabled" aria-label="Quitar filtro {{ $label }}"
+                    class="inline-flex min-h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 py-1 text-left text-sm text-ink hover:bg-accent-soft disabled:opacity-50">
+                    <span class="min-w-0 wrap-break-word">{{ $label }}</span>
+                    <x-icon name="close" class="size-3.5" />
+                </button>
+            @endforeach
+        </x-slot:filterChips>
+        <x-slot:content>
+    <div class="space-y-4 p-4">
         @forelse ($prestamos as $prestamo)
             <div
                 wire:key="prestamo-{{ $prestamo->id }}"
@@ -131,40 +186,18 @@
 
                         <tbody class="divide-y divide-gray-100">
                             @foreach ($prestamo->detalles as $detalle)
-                                @php
-                                    $esEquipo = $detalle->equipo_id !== null;
-                                    $nombre = $esEquipo
-                                        ? trim(
-                                            ($detalle->equipo?->tipoEquipo?->nombre ?? 'Equipo')
-                                            . ' '
-                                            . ($detalle->equipo?->marca?->nombre ?? '')
-                                            . ' '
-                                            . ($detalle->equipo?->modelo ?? '')
-                                        )
-                                        : ($detalle->herramienta?->nombre ?? 'Herramienta no disponible');
-
-                                    $codigo = $esEquipo
-                                        ? $detalle->equipo?->numero_inventario
-                                        : $detalle->herramienta?->codigo_interno;
-                                @endphp
-
-                                <tr>
+                                @php($asset = \App\Services\PrestamosTable::asset($detalle))
+                                <tr wire:key="prestamo-detalle-{{ $detalle->id }}">
                                     <td class="px-5 py-3 text-sm text-gray-600">
-                                        @if ($esEquipo)
-                                            Equipo
-                                        @elseif ($detalle->herramienta?->tipo_control === 'cantidad')
-                                            Herramienta por cantidad
-                                        @else
-                                            Herramienta individual
-                                        @endif
+                                        {{ $asset['tipo'] }}
                                     </td>
 
                                     <td class="px-5 py-3 font-medium text-gray-800">
-                                        {{ $nombre }}
+                                        {{ $asset['articulo'] }}
                                     </td>
 
                                     <td class="px-5 py-3 text-gray-600">
-                                        {{ $codigo ?: '—' }}
+                                        {{ $asset['codigo'] ?: '—' }}
                                     </td>
 
                                     <td class="px-5 py-3 text-right text-gray-600">
@@ -205,14 +238,16 @@
             </div>
         @empty
             <div class="rounded-xl bg-white px-6 py-12 text-center text-gray-500 shadow-sm">
-                No se encontraron préstamos.
+                {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver los préstamos.' : 'No se encontraron préstamos.' }}
             </div>
         @endforelse
     </div>
 
-    <div class="mt-6">
-        {{ $prestamos->links() }}
-    </div>
+        </x-slot:content>
+        <x-slot:pagination>
+            <x-table-pagination :paginator="$prestamos" label="Paginación de préstamos" />
+        </x-slot:pagination>
+    </x-data-table>
 
     {{-- Modal --}}
     @if ($mostrarModal)

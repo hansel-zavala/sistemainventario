@@ -64,6 +64,13 @@ Before relying on a package's API, confirm its installed version:
 
 - This project contains committed, area-grouped rules in `.ai/rules` when that directory exists, including path-scoped framework guidelines under `.ai/rules/boost`. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
 
+## Movement Filters and PHP Diagnostics
+
+- When using Livewire movement filter properties as array keys inside a Blade `@php` block, verify their types in the backing component and add matching `@var` annotations. For string properties, use `/** @var string $orden */`, `/** @var string $tipoArticulo */`, `/** @var string $destino */`, or `/** @var string $filtroEstado */` as applicable.
+- Reference shared movement constants through the class that declares them, such as `MovimientosTable::ORDERS` and `MovimientosTable::DEFAULT_ORDER`.
+- In movement query methods declared to return `Eloquent\Builder`, apply forwarded methods such as `orderBy()` to the existing builder, then return that builder on its own line. Preserve the Eloquent return type.
+- Verify analyzer diagnostics against the property declarations and installed framework behavior. Fix confirmed issues and use targeted type hints or equivalent rewrites for false positives. Keep the filter behavior intact.
+
 ## Artisan
 
 - Run Artisan commands directly via the command line (e.g., `php artisan route:list`). Use `php artisan list` to discover available commands and `php artisan [command] --help` to check parameters.
