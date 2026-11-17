@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\PasswordRecoveryController;
 use App\Http\Controllers\DevolucionesExportController;
 use App\Http\Controllers\EntradasExportController;
 use App\Http\Controllers\EquiposExportController;
+use App\Http\Controllers\HistorialMovimientosExportController;
 use App\Http\Controllers\InventoryExportController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\PrestamosExportController;
@@ -192,6 +193,9 @@ Route::middleware('auth')->group(function () {
         '/historial/movimientos',
         HistorialMovimientosIndex::class
     )->name('historial.movimientos');
+
+    Route::get('/historial/movimientos/exportar', HistorialMovimientosExportController::class)
+        ->name('historial.movimientos.exportar');
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');
