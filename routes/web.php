@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditoriasExportController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordRecoveryController;
 use App\Http\Controllers\DevolucionesExportController;
@@ -105,6 +106,9 @@ Route::middleware('auth')->group(function () {
             '/administracion/auditorias',
             AuditoriasIndex::class
         )->name('administracion.auditorias');
+
+        Route::get('/administracion/auditorias/exportar', AuditoriasExportController::class)
+            ->name('administracion.auditorias.exportar');
     });
 
     Route::get(
