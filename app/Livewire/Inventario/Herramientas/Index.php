@@ -9,11 +9,13 @@ use App\Models\MovimientoInventario;
 use App\Models\PrestamoDetalle;
 use App\Models\UnidadMedida;
 use App\Services\HerramientasTable;
+use App\Services\MovimientosTable;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -23,6 +25,28 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public function updatedDesde(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedHasta(): void
+    {
+        $this->resetPage();
+    }
+
+    public function removeDateFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, ['desde', 'hasta'], true), 422);
+
+        $this->reset($filter);
+        $this->resetPage();
+    }
 
     public const COLUMNS = HerramientasTable::COLUMNS;
 
@@ -65,6 +89,7 @@ class Index extends Component
 
     public function clearFilters(): void
     {
+        $this->reset('desde', 'hasta');
         $this->reset('buscar', 'filtroTipo', 'filtroEstado');
         $this->resetPage();
     }
@@ -833,11 +858,19 @@ class Index extends Component
 
     public function render()
     {
+        $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
+        $dateErrors = Validator::make($dateRange, [
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'hasta' => ['nullable', 'date_format:Y-m-d', ...($this->desde !== '' ? ['after_or_equal:desde'] : [])],
+        ], MovimientosTable::FILTER_MESSAGES)->errors();
+        $queryDates = $dateErrors->isEmpty() ? $dateRange : [];
+
         $herramientas = app(HerramientasTable::class)->query([
+            ...$queryDates,
             'buscar' => $this->buscar, 'filtroEstado' => $this->filtroEstado,
             'sortColumn' => $this->sortColumn, 'sortDirection' => $this->sortDirection,
             'filtroTipo' => $this->filtroTipo,
-        ])->paginate(10);
+        ])->when($dateErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))->paginate(10);
 
         foreach ($herramientas as $herramienta) {
             $herramienta->setAttribute('cantidad_disponible_calculada', HerramientasTable::available($herramienta));
@@ -1036,6 +1069,7 @@ class Index extends Component
             'livewire.inventario.herramientas.index',
             compact(
                 'herramientas',
+                'dateErrors',
                 'categorias',
                 'marcas',
                 'unidades',

@@ -55,13 +55,14 @@
         search-label="Buscar herramienta"
         search-placeholder="Nombre, código o marca..."
         default-order-label="orden por nombre"
+        :export-disabled="$dateErrors->isNotEmpty()"
         :collapsible-filters="true"
-        :active-filter-count="count($activeFilters)"
+        :active-filter-count="(count($activeFilters)) + (int) ($desde !== '') + (int) ($hasta !== '')"
     >
         <x-slot:export>
             <x-table-export id="herramientas" :action="route('inventario.herramientas.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
-                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado, 'filtroTipo' => $filtroTipo]" />
+                :visible-columns="$visibleColumns" :show-date-fields="false" :export-filters="['filtroEstado' => $filtroEstado, 'filtroTipo' => $filtroTipo, 'desde' => $desde, 'hasta' => $hasta]" />
         </x-slot:export>
         <x-slot:filters>
             @foreach ($filterFields as $name => $field)
@@ -75,12 +76,14 @@
                     </select>
                 </label>
             @endforeach
+            <x-table-date-filters id="herramientas" :errors="$dateErrors" />
         </x-slot:filters>
         <x-slot:summary>
             Mostrando {{ $herramientas->count() }} de {{ $herramientas->total() }} herramientas encontradas
         </x-slot:summary>
 
         <x-slot:filterChips>
+            <x-table-date-chips id="herramientas" :desde="$desde" :hasta="$hasta" />
             @foreach ($activeFilters as $name => $field)
                 @php
                     $chipLabel = $field['label'].': '.$field['options'][$field['value']];

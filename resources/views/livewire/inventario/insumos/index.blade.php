@@ -47,13 +47,14 @@
         search-label="Buscar insumo"
         search-placeholder="Nombre, marca o categoría..."
         default-order-label="orden por nombre"
+        :export-disabled="$dateErrors->isNotEmpty()"
         :collapsible-filters="true"
-        :active-filter-count="$activeStatus === null ? 0 : 1"
+        :active-filter-count="($activeStatus === null ? 0 : 1) + (int) ($desde !== '') + (int) ($hasta !== '')"
     >
         <x-slot:export>
             <x-table-export id="insumos" :action="route('inventario.insumos.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
-                :visible-columns="$visibleColumns" :export-filters="['filtroEstado' => $filtroEstado]" />
+                :visible-columns="$visibleColumns" :show-date-fields="false" :export-filters="['filtroEstado' => $filtroEstado, 'desde' => $desde, 'hasta' => $hasta]" />
         </x-slot:export>
         <x-slot:filters>
             <label class="text-sm font-medium text-muted sm:col-span-2">Estado
@@ -64,12 +65,14 @@
                     @endforeach
                 </select>
             </label>
+            <x-table-date-filters id="insumos" :errors="$dateErrors" />
         </x-slot:filters>
         <x-slot:summary>
             Mostrando {{ $insumos->count() }} de {{ $insumos->total() }} insumos encontrados
         </x-slot:summary>
 
         <x-slot:filterChips>
+            <x-table-date-chips id="insumos" :desde="$desde" :hasta="$hasta" />
             @if ($activeStatus !== null)
                 <button type="button" wire:key="insumos-filter-chip-estado" wire:click="removeStatusFilter"
                     wire:loading.attr="disabled" aria-label="Quitar filtro Estado: {{ $activeStatus }}"

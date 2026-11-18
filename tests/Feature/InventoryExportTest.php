@@ -8,9 +8,13 @@ use App\Livewire\Catalogos\Departamentos\Index as DepartamentosIndex;
 use App\Livewire\Catalogos\Marcas\Index as MarcasIndex;
 use App\Livewire\Catalogos\TiposEquipo\Index as TiposEquipoIndex;
 use App\Livewire\Catalogos\UnidadesMedida\Index as UnidadesMedidaIndex;
+use App\Livewire\Inventario\Equipos\Index as EquiposIndex;
+use App\Livewire\Inventario\Herramientas\Index as HerramientasIndex;
+use App\Livewire\Inventario\Insumos\Index as InsumosIndex;
 use App\Livewire\Inventario\Tintas\Index as TintasIndex;
 use App\Models\Categoria;
 use App\Models\Departamento;
+use App\Models\Equipo;
 use App\Models\Herramienta;
 use App\Models\Insumo;
 use App\Models\Marca;
@@ -32,6 +36,34 @@ use Tests\TestCase;
 class InventoryExportTest extends TestCase
 {
     use LazilyRefreshDatabase;
+
+    #[TestWith(['equipos', EquiposIndex::class, Equipo::class, 'numero_inventario'])]
+    #[TestWith(['herramientas', HerramientasIndex::class, Herramienta::class, 'nombre'])]
+    #[TestWith(['insumos', InsumosIndex::class, Insumo::class, 'nombre'])]
+    #[TestWith(['tintas', TintasIndex::class, Tinta::class, 'nombre'])]
+    public function test_inventory_dates_filter_the_table_and_are_forwarded_to_export(string $module, string $component, string $model, string $column): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $this->login($user);
+        $first = $model::factory()->create(['created_at' => '2026-11-01 00:00:00', $column => 'MATCH-FIRST']);
+        $last = $model::factory()->create(['created_at' => '2026-11-01 23:59:59', $column => 'MATCH-LAST']);
+        $model::factory()->create(['created_at' => '2026-11-02 00:00:00', $column => 'MATCH-OUTSIDE']);
+
+        Livewire::actingAs($user)->test($component)->set('buscar', 'MATCH-')
+            ->call('setPage', 2)->set('desde', '2026-11-01')->set('hasta', '2026-11-01')
+            ->assertSet('paginators.page', 1)->assertSee('Filtros, 2 activos')->assertSee('Desde: 2026-11-01')
+            ->assertViewHas($module, fn ($rows): bool => $rows->pluck('id')->sort()->values()->all() === [$first->id, $last->id])
+            ->assertSee('name="desde" value="2026-11-01"', false)
+            ->assertDontSee('name="desde" x-model', false)
+            ->set('desde', '2026-11-02')->assertSee('La fecha final debe ser igual o posterior a la fecha inicial.')
+            ->assertSee('disabled @click="menu = menu', false)
+            ->call('removeDateFilter', 'desde')->assertSet('buscar', 'MATCH-')->assertSet('hasta', '2026-11-01')
+            ->call('clearFilters')->assertSet('desde', '')->assertSet('hasta', '');
+
+        $this->get(route("inventario.$module.exportar", ['desde' => '2026-11-01', 'hasta' => '2026-11-01',
+            'buscar' => 'MATCH-', 'format' => 'print', 'columns' => [$column]]))
+            ->assertOk()->assertSee('MATCH-FIRST')->assertSee('MATCH-LAST')->assertDontSee('MATCH-OUTSIDE');
+    }
 
     #[TestWith(['csv'])]
     #[TestWith(['xlsx'])]

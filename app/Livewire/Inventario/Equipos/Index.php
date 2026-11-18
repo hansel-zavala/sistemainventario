@@ -8,9 +8,11 @@ use App\Models\Equipo;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
 use App\Services\EquiposTable;
+use App\Services\MovimientosTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -20,6 +22,28 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public function updatedDesde(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedHasta(): void
+    {
+        $this->resetPage();
+    }
+
+    public function removeDateFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, ['desde', 'hasta'], true), 422);
+
+        $this->reset($filter);
+        $this->resetPage();
+    }
 
     public string $buscar = '';
 
@@ -88,6 +112,7 @@ class Index extends Component
 
     public function clearFilters(): void
     {
+        $this->reset('desde', 'hasta');
         $this->buscar = '';
         $this->filters = self::DEFAULT_FILTERS;
         $this->resetPage();
@@ -689,14 +714,22 @@ class Index extends Component
 
     public function render()
     {
+        $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
+        $dateErrors = Validator::make($dateRange, [
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'hasta' => ['nullable', 'date_format:Y-m-d', ...($this->desde !== '' ? ['after_or_equal:desde'] : [])],
+        ], MovimientosTable::FILTER_MESSAGES)->errors();
+        $queryDates = $dateErrors->isEmpty() ? $dateRange : [];
+
         $table = app(EquiposTable::class);
         $tableFilters = $table->validate(array_merge($this->filters, [
             'buscar' => $this->buscar,
             'sortColumn' => $this->sortColumn,
             'sortDirection' => $this->sortDirection,
             'columns' => $this->visibleColumns,
+            ...$queryDates,
         ]));
-        $equipos = $table->query($tableFilters)->paginate(10);
+        $equipos = $table->query($tableFilters)->when($dateErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))->paginate(10);
         $filterOptions = [
             'categoria' => Categoria::query()->where('aplica_a', 'equipo')->orderBy('nombre')->get(),
             'tipo' => TipoEquipo::query()->orderBy('nombre')->get(),
@@ -729,6 +762,7 @@ class Index extends Component
             'livewire.inventario.equipos.index',
             compact(
                 'equipos',
+                'dateErrors',
                 'filterOptions',
                 'categorias',
                 'tiposEquipo',

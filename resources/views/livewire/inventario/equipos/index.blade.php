@@ -50,13 +50,14 @@
         :sort-direction="$sortDirection"
         search-label="Buscar equipo"
         search-placeholder="Inventario, serie, marca, modelo o tipo..."
+        :export-disabled="$dateErrors->isNotEmpty()"
         :collapsible-filters="true"
-        :active-filter-count="count(array_filter($filters, fn ($value) => filled($value)))"
+        :active-filter-count="(count(array_filter($filters, fn ($value) => filled($value)))) + (int) ($desde !== '') + (int) ($hasta !== '')"
     >
         <x-slot:export>
             <x-table-export id="equipos" :action="route('inventario.equipos.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
-                :visible-columns="$visibleColumns" :export-filters="$filters" />
+                :visible-columns="$visibleColumns" :show-date-fields="false" :export-filters="[...$filters, 'desde' => $desde, 'hasta' => $hasta]" />
         </x-slot:export>
 
         <x-slot:filters>
@@ -78,6 +79,7 @@
                     @endforeach
                 </select>
             </label>
+            <x-table-date-filters id="equipos" :errors="$dateErrors" />
         </x-slot:filters>
 
         <x-slot:summary>
@@ -85,6 +87,7 @@
         </x-slot:summary>
 
         <x-slot:filterChips>
+            <x-table-date-chips id="equipos" :desde="$desde" :hasta="$hasta" />
             @foreach ($filterLabels + ['estado' => 'Estado'] as $name => $label)
                 @continue(blank($filters[$name] ?? null))
                 @php

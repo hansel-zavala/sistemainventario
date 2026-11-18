@@ -50,13 +50,14 @@
         search-label="Buscar tinta"
         search-placeholder="Referencia, marca, color..."
         default-order-label="orden por nombre"
+        :export-disabled="$dateErrors->isNotEmpty()"
         :collapsible-filters="true"
-        :active-filter-count="count($activeFilters)"
+        :active-filter-count="(count($activeFilters)) + (int) ($desde !== '') + (int) ($hasta !== '')"
     >
         <x-slot:export>
             <x-table-export id="tintas" :action="route('inventario.tintas.exportar')"
                 :buscar="$buscar" :sort-column="$sortColumn" :sort-direction="$sortDirection"
-                :visible-columns="$visibleColumns" :export-filters="['filtroColor' => $filtroColor, 'filtroEstado' => $filtroEstado]" />
+                :visible-columns="$visibleColumns" :show-date-fields="false" :export-filters="['filtroColor' => $filtroColor, 'filtroEstado' => $filtroEstado, 'desde' => $desde, 'hasta' => $hasta]" />
         </x-slot:export>
 
         <x-slot:filters>
@@ -76,6 +77,7 @@
                     @endforeach
                 </select>
             </label>
+            <x-table-date-filters id="tintas" :errors="$dateErrors" />
         </x-slot:filters>
 
         <x-slot:summary>
@@ -83,6 +85,7 @@
         </x-slot:summary>
 
         <x-slot:filterChips>
+            <x-table-date-chips id="tintas" :desde="$desde" :hasta="$hasta" />
             @foreach ($activeFilters as $filter => $label)
                 <button type="button" wire:key="tintas-filter-chip-{{ $filter }}" wire:click="removeFilter('{{ $filter }}')"
                     wire:loading.attr="disabled" aria-label="Quitar filtro {{ $label }}"

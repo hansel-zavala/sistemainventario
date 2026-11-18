@@ -6,12 +6,14 @@ use App\Models\Marca;
 use App\Models\MovimientoInventarioDetalle;
 use App\Models\RecargaTintaDetalle;
 use App\Models\Tinta;
+use App\Services\MovimientosTable;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
 use App\Services\TintasTable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -21,6 +23,28 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public function updatedDesde(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedHasta(): void
+    {
+        $this->resetPage();
+    }
+
+    public function removeDateFilter(string $filter): void
+    {
+        abort_unless(in_array($filter, ['desde', 'hasta'], true), 422);
+
+        $this->reset($filter);
+        $this->resetPage();
+    }
 
     public const COLUMNS = TintasTable::COLUMNS;
 
@@ -65,6 +89,7 @@ class Index extends Component
 
     public function clearFilters(): void
     {
+        $this->reset('desde', 'hasta');
         $this->reset('buscar', 'filtroColor', 'filtroEstado');
         $this->resetPage();
     }
@@ -519,13 +544,21 @@ class Index extends Component
 
     public function render()
     {
+        $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
+        $dateErrors = Validator::make($dateRange, [
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'hasta' => ['nullable', 'date_format:Y-m-d', ...($this->desde !== '' ? ['after_or_equal:desde'] : [])],
+        ], MovimientosTable::FILTER_MESSAGES)->errors();
+        $queryDates = $dateErrors->isEmpty() ? $dateRange : [];
+
         $tintas = app(TintasTable::class)->query([
+            ...$queryDates,
             'buscar' => $this->buscar,
             'filtroColor' => $this->filtroColor,
             'filtroEstado' => $this->filtroEstado,
             'sortColumn' => $this->sortColumn,
             'sortDirection' => $this->sortDirection,
-        ])->paginate(10);
+        ])->when($dateErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))->paginate(10);
 
         $marcas = Marca::query()
             ->where('activo', true)
@@ -707,6 +740,7 @@ class Index extends Component
             'livewire.inventario.tintas.index',
             compact(
                 'tintas',
+                'dateErrors',
                 'marcas',
                 'colores',
                 'colorOptions',
