@@ -10,6 +10,7 @@ use App\Http\Controllers\HistorialMovimientosExportController;
 use App\Http\Controllers\InventoryExportController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\PrestamosExportController;
+use App\Http\Controllers\RecargasExportController;
 use App\Http\Controllers\SalidasExportController;
 use App\Livewire\Administracion\Auditorias\Index as AuditoriasIndex;
 use App\Livewire\Administracion\Usuarios\Index as UsuariosIndex;
@@ -160,6 +161,9 @@ Route::middleware('auth')->group(function () {
         '/inventario/tintas/recargas',
         RecargasTintaIndex::class
     )->name('inventario.tintas.recargas');
+
+    Route::get('/inventario/tintas/recargas/exportar', RecargasExportController::class)
+        ->name('inventario.tintas.recargas.exportar');
 
     Route::get(
         '/movimientos/entradas',
