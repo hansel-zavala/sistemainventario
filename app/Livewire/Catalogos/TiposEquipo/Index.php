@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Catalogos\TiposEquipo;
 
+use App\Models\Categoria;
 use App\Models\TipoEquipo;
 use App\Services\RegistrarAuditoria;
 use App\Services\TiposEquipoTable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -77,6 +79,9 @@ class Index extends Component
 
     public string $nombre = '';
 
+    /** @var list<string|int> */
+    public array $categoriaIds = [];
+
     public bool $activoTipoEquipo = true;
 
     public function updatingBuscar(): void
@@ -102,6 +107,8 @@ class Index extends Component
 
         $this->tipoEquipoId = $tipoEquipo->id;
         $this->nombre = $tipoEquipo->nombre;
+        $this->categoriaIds = $tipoEquipo->categorias()->orderBy('categorias.id')
+            ->pluck('categorias.id')->map(strval(...))->all();
         $this->activoTipoEquipo = $tipoEquipo->activo;
 
         $this->resetValidation();
@@ -122,12 +129,16 @@ class Index extends Component
     {
         $this->tipoEquipoId = null;
         $this->nombre = '';
+        $this->categoriaIds = [];
         $this->activoTipoEquipo = true;
     }
 
     protected function rules(): array
     {
         return [
+            'categoriaIds' => ['array', 'list'],
+            'categoriaIds.*' => ['required', 'integer', 'min:1', 'distinct'],
+
             'nombre' => [
                 'required',
                 'string',
@@ -143,6 +154,8 @@ class Index extends Component
     protected function messages(): array
     {
         return [
+            'categoriaIds.*' => 'Seleccione categorías válidas y sin duplicados.',
+
             'nombre.required' => 'El nombre del tipo de equipo es obligatorio.',
 
             'nombre.max' => 'El nombre no puede superar los 100 caracteres.',
@@ -214,6 +227,21 @@ class Index extends Component
                 $tipoEquipo->fill($datos);
                 RegistrarAuditoria::guardarActualizacion($tipoEquipo);
             }
+
+            $categorias = Categoria::query()
+                ->whereKey($this->categoriaIds)
+                ->where('aplica_a', 'equipo')
+                ->orderBy('id')
+                ->sharedLock()
+                ->pluck('id');
+
+            if ($categorias->count() !== count($this->categoriaIds)) {
+                throw ValidationException::withMessages([
+                    'categoriaIds' => 'Seleccione solo categorías de Equipos.',
+                ]);
+            }
+
+            $tipoEquipo->categorias()->sync($categorias->all());
 
             return true;
         }, 3);
@@ -291,7 +319,12 @@ class Index extends Component
 
         return view(
             'livewire.catalogos.tipos-equipo.index',
-            compact('tiposEquipo')
+            [
+                'tiposEquipo' => $tiposEquipo,
+                'categorias' => $this->mostrarModal
+                    ? Categoria::query()->where('aplica_a', 'equipo')->orderBy('aplica_a')->orderBy('nombre')->get()
+                    : collect(),
+            ]
         );
     }
 }

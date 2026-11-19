@@ -238,6 +238,10 @@ class Index extends Component
                     'activo',
                 ]);
             } else {
+                if ($categoria->aplica_a === 'equipo' && $this->aplicaA !== 'equipo') {
+                    $categoria->tiposEquipo()->detach();
+                }
+
                 $categoria->fill($datos);
                 RegistrarAuditoria::guardarActualizacion($categoria);
             }

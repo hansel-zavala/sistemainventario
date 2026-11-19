@@ -2,11 +2,14 @@
 
 namespace App\Livewire\Catalogos\Marcas;
 
+use App\Models\Categoria;
 use App\Models\Marca;
+use App\Services\CategoriasTable;
 use App\Services\MarcasTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -77,6 +80,9 @@ class Index extends Component
 
     public string $nombre = '';
 
+    /** @var list<string|int> */
+    public array $categoriaIds = [];
+
     public bool $activoMarca = true;
 
     public function updatingBuscar(): void
@@ -102,6 +108,8 @@ class Index extends Component
 
         $this->marcaId = $marca->id;
         $this->nombre = $marca->nombre;
+        $this->categoriaIds = $marca->categorias()->orderBy('categorias.id')
+            ->pluck('categorias.id')->map(strval(...))->all();
         $this->activoMarca = $marca->activo;
 
         $this->resetValidation();
@@ -122,12 +130,16 @@ class Index extends Component
     {
         $this->marcaId = null;
         $this->nombre = '';
+        $this->categoriaIds = [];
         $this->activoMarca = true;
     }
 
     protected function rules(): array
     {
         return [
+            'categoriaIds' => ['array', 'list'],
+            'categoriaIds.*' => ['required', 'integer', 'min:1', 'distinct'],
+
             'nombre' => [
                 'required',
                 'string',
@@ -143,6 +155,8 @@ class Index extends Component
     protected function messages(): array
     {
         return [
+            'categoriaIds.*' => 'Seleccione categorías válidas y sin duplicados.',
+
             'nombre.required' => 'El nombre de la marca es obligatorio.',
 
             'nombre.max' => 'El nombre no puede superar los 100 caracteres.',
@@ -219,6 +233,21 @@ class Index extends Component
                 RegistrarAuditoria::guardarActualizacion($marca);
             }
 
+            $categorias = Categoria::query()
+                ->whereKey($this->categoriaIds)
+                ->whereIn('aplica_a', array_keys(CategoriasTable::TYPES))
+                ->orderBy('id')
+                ->sharedLock()
+                ->pluck('id');
+
+            if ($categorias->count() !== count($this->categoriaIds)) {
+                throw ValidationException::withMessages([
+                    'categoriaIds' => 'Seleccione categorías válidas de Equipos, Herramientas o Insumos.',
+                ]);
+            }
+
+            $marca->categorias()->sync($categorias->all());
+
             return true;
         }, 3);
 
@@ -288,7 +317,12 @@ class Index extends Component
 
         return view(
             'livewire.catalogos.marcas.index',
-            compact('marcas')
+            [
+                'marcas' => $marcas,
+                'categorias' => $this->mostrarModal
+                    ? Categoria::query()->whereIn('aplica_a', array_keys(CategoriasTable::TYPES))->orderBy('aplica_a')->orderBy('nombre')->get()
+                    : collect(),
+            ]
         );
     }
 }

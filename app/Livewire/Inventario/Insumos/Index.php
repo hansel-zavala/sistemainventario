@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventario\Insumos;
 
+use App\Livewire\Inventario\CatalogosPorCategoria;
 use App\Models\Categoria;
 use App\Models\Insumo;
 use App\Models\Marca;
@@ -22,7 +23,10 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
+    use CatalogosPorCategoria;
     use WithPagination;
+
+    private const TIPO_CATEGORIA = 'insumo';
 
     public string $desde = '';
 
@@ -198,6 +202,13 @@ class Index extends Component
         $this->resetFormulario();
     }
 
+    public function updatedCategoriaId(): void
+    {
+        $categoria = $this->categoriaActiva();
+        $this->resetValidation('categoriaId');
+        $this->limpiarMarcaPorCategoria($categoria);
+    }
+
     public function abrirModalCatalogo(string $tipo): void
     {
         $tiposPermitidos = [
@@ -210,6 +221,7 @@ class Index extends Component
             return;
         }
 
+        $this->reset('vincularExistente', 'catalogoExistenteId');
         $this->tipoCatalogo = $tipo;
         $this->nuevoNombreCatalogo = '';
         $this->nuevoNombrePluralUnidad = '';
@@ -223,6 +235,7 @@ class Index extends Component
 
     public function cerrarModalCatalogo(): void
     {
+        $this->reset('vincularExistente', 'catalogoExistenteId');
         $this->mostrarModalCatalogo = false;
         $this->tipoCatalogo = '';
         $this->nuevoNombreCatalogo = '';
@@ -291,6 +304,12 @@ class Index extends Component
 
     public function guardarCatalogoRapido(): void
     {
+        if ($this->vincularExistente && $this->modeloCatalogoVinculable() !== null) {
+            $this->vincularCatalogoRapido();
+
+            return;
+        }
+
         $this->validate(
             $this->rulesCatalogoRapido(),
             $this->messagesCatalogoRapido()
@@ -336,6 +355,7 @@ class Index extends Component
             }, 3);
 
             $this->categoriaId = (string) $categoria->id;
+            $this->updatedCategoriaId();
         }
 
         if ($this->tipoCatalogo === 'marca') {
@@ -350,19 +370,20 @@ class Index extends Component
             if ($duplicada) {
                 $this->addError(
                     'nuevoNombreCatalogo',
-                    'Ya existe una marca con este nombre.'
+                    'Ya existe una marca con este nombre. Elija «Vincular existente» para usarla.'
                 );
 
                 return;
             }
 
             $marca = DB::transaction(function () use ($nombre) {
-
+                $categoria = $this->exigirCategoriaParaAltaRapida();
                 $marca = Marca::create([
                     'nombre' => $nombre,
                     'activo' => true,
                     'creado_por' => Auth::id(),
                 ]);
+                $marca->categorias()->attach($categoria->id);
 
                 RegistrarAuditoria::creacion($marca, [
                     'nombre',
@@ -478,12 +499,16 @@ class Index extends Component
             ],
 
             'categoriaId' => [
+                'bail',
                 'required',
+                'integer',
                 'exists:categorias,id',
             ],
 
             'marcaId' => [
+                'bail',
                 'nullable',
+                'integer',
                 'exists:marcas,id',
             ],
 
@@ -526,8 +551,10 @@ class Index extends Component
             'categoriaId.required' => 'Debe seleccionar una categoría.',
 
             'categoriaId.exists' => 'La categoría seleccionada no es válida.',
+            'categoriaId.integer' => 'La categoría seleccionada no es válida.',
 
             'marcaId.exists' => 'La marca seleccionada no es válida.',
+            'marcaId.integer' => 'La marca seleccionada no es válida.',
 
             'unidadMedidaId.required' => 'Debe seleccionar una unidad de medida.',
 
@@ -573,6 +600,8 @@ class Index extends Component
                     ->lockForUpdate()
                     ->firstOrFail();
             }
+
+            $this->validarCategoriaYMarca($insumo);
 
             /* Validar unidad de medida */
 
@@ -738,16 +767,22 @@ class Index extends Component
             'sortColumn' => $this->sortColumn, 'sortDirection' => $this->sortDirection,
         ])->when($dateErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))->paginate(10);
 
-        $categorias = Categoria::query()
-            ->where('activo', true)
-            ->where('aplica_a', 'insumo')
-            ->orderBy('nombre')
-            ->get();
+        $registro = $this->mostrarModal && $this->insumoId !== null
+            ? Insumo::find($this->insumoId)
+            : null;
+        $categoria = $this->mostrarModal ? $this->categoriaActiva() : null;
+        $categoriaCatalogo = $categoria;
+        $catalogoVinculable = $this->modeloCatalogoVinculable() !== null;
+        $opcionesCatalogoExistente = $this->opcionesCatalogoExistente($categoria);
+        $categoriaDisponible = $categoria !== null;
+        $categorias = $this->categoriasDelFormulario($registro);
 
-        $marcas = Marca::query()
-            ->where('activo', true)
-            ->orderBy('nombre')
-            ->get();
+        $marcas = $this->opcionesDelCatalogo(
+            Marca::class,
+            $categoria,
+            $this->conservaOpcion($registro, 'marca_id', $this->marcaId),
+            $this->marcaId,
+        );
 
         $unidades = UnidadMedida::query()
             ->where('activo', true)
@@ -790,6 +825,10 @@ class Index extends Component
                 'insumos',
                 'dateErrors',
                 'categorias',
+                'categoriaDisponible',
+                'categoriaCatalogo',
+                'catalogoVinculable',
+                'opcionesCatalogoExistente',
                 'marcas',
                 'unidades',
                 'movimientosHistorial',

@@ -181,6 +181,8 @@
                     </div>
 
 
+                    <x-categorias-catalogo :categorias="$categorias" />
+
                     <div>
 
                         <div class="flex items-center">

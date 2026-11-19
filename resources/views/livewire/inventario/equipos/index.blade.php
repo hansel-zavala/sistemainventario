@@ -197,13 +197,14 @@
                         {{-- Categoría --}}
                         <div>
 
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
+                            <label for="categoria-inventario" class="mb-1 block text-sm font-medium text-gray-700">
                                 Categoría *
                             </label>
 
                             <div class="flex">
                                 <select
-                                    wire:model="categoriaId"
+                                    id="categoria-inventario"
+                                    wire:model.live="categoriaId"
                                     class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 >
                                     <option value="">
@@ -241,21 +242,24 @@
                         {{-- Tipo --}}
                         <div>
 
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
+                            <label for="tipo-equipo-inventario" class="mb-1 block text-sm font-medium text-gray-700">
                                 Tipo de equipo *
                             </label>
 
                             <div class="flex">
                                 <select
+                                    id="tipo-equipo-inventario"
                                     wire:model="tipoEquipoId"
+                                    wire:key="tipo-equipo-categoria-{{ $categoriaId }}"
+                                    @disabled(! $categoriaDisponible)
                                     class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 >
                                     <option value="">
-                                        Seleccione...
+                                        {{ $categoriaDisponible ? 'Seleccione...' : 'Seleccione una categoría activa' }}
                                     </option>
 
                                     @foreach ($tiposEquipo as $tipo)
-                                        <option value="{{ $tipo->id }}">
+                                        <option wire:key="tipo-equipo-opcion-{{ $tipo->id }}" value="{{ $tipo->id }}">
                                             {{ $tipo->nombre }}
                                         </option>
                                     @endforeach
@@ -264,6 +268,7 @@
                                 <button
                                     type="button"
                                     wire:click="abrirModalCatalogo('tipo_equipo')"
+                                    @disabled(! $categoriaDisponible)
                                     title="Nuevo tipo de equipo"
                                     class="inline-flex items-center justify-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors focus:outline-none"
                                 >
@@ -272,6 +277,10 @@
                                     </svg>
                                 </button>
                             </div>
+
+                            @if ($categoriaDisponible && $tiposEquipo->isEmpty())
+                                <p role="status" class="mt-1 text-sm text-gray-600">No hay tipos de equipo activos vinculados a esta categoría.</p>
+                            @endif
 
                             @error('tipoEquipoId')
                                 <p class="mt-1 text-sm text-red-600">
@@ -332,21 +341,24 @@
                         {{-- Marca --}}
                         <div>
 
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
+                            <label for="marca-inventario" class="mb-1 block text-sm font-medium text-gray-700">
                                 Marca *
                             </label>
 
                             <div class="flex">
                                 <select
+                                    id="marca-inventario"
                                     wire:model="marcaId"
+                                    wire:key="marca-categoria-{{ $categoriaId }}"
+                                    @disabled(! $categoriaDisponible)
                                     class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 >
                                     <option value="">
-                                        Seleccione...
+                                        {{ $categoriaDisponible ? 'Seleccione...' : 'Seleccione una categoría activa' }}
                                     </option>
 
                                     @foreach ($marcas as $marca)
-                                        <option value="{{ $marca->id }}">
+                                        <option wire:key="marca-opcion-{{ $marca->id }}" value="{{ $marca->id }}">
                                             {{ $marca->nombre }}
                                         </option>
                                     @endforeach
@@ -355,6 +367,7 @@
                                 <button
                                     type="button"
                                     wire:click="abrirModalCatalogo('marca')"
+                                    @disabled(! $categoriaDisponible)
                                     title="Nueva marca"
                                     class="inline-flex items-center justify-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors focus:outline-none"
                                 >
@@ -363,6 +376,10 @@
                                     </svg>
                                 </button>
                             </div>
+
+                            @if ($categoriaDisponible && $marcas->isEmpty())
+                                <p role="status" class="mt-1 text-sm text-gray-600">No hay marcas activas vinculadas a esta categoría.</p>
+                            @endif
 
                             @error('marcaId')
                                 <p class="mt-1 text-sm text-red-600">
@@ -536,19 +553,21 @@
                             @if ($tipoCatalogo === 'categoria')
                                 Nueva categoría
                             @elseif ($tipoCatalogo === 'tipo_equipo')
-                                Nuevo tipo de equipo
+                                Tipo de equipo
                             @elseif ($tipoCatalogo === 'departamento')
                                 Nuevo departamento
                             @elseif ($tipoCatalogo === 'marca')
-                                Nueva marca
+                                Marca
                             @else
                                 Nuevo registro
                             @endif
                         </h3>
 
-                        <p class="text-xs text-gray-500">
-                            Ingrese el nombre para registrarlo rápidamente.
-                        </p>
+                        @unless ($catalogoVinculable)
+                            <p class="text-xs text-gray-500">
+                                Ingrese el nombre para registrarlo rápidamente.
+                            </p>
+                        @endunless
                     </div>
 
                     <button
@@ -565,7 +584,15 @@
                     wire:submit="guardarCatalogoRapido"
                     class="space-y-4"
                 >
+                    @if ($catalogoVinculable)
+                        <x-catalogo-rapido-vinculo
+                            :categoria="$categoriaCatalogo"
+                            :opciones="$opcionesCatalogoExistente"
+                            :vincular-existente="$vincularExistente"
+                        />
+                    @endif
 
+                    @unless ($catalogoVinculable && $vincularExistente)
                     <div>
                         <label class="mb-1 block text-sm font-medium text-gray-700">
                             Nombre *
@@ -607,6 +634,8 @@
                         </div>
                     @endif
 
+                    @endunless
+
                     <div class="flex justify-end gap-3 border-t border-gray-100 pt-4">
                         <button
                             type="button"
@@ -620,7 +649,7 @@
                             type="submit"
                             class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                         >
-                            Guardar
+                            {{ $catalogoVinculable && $vincularExistente ? 'Vincular y seleccionar' : 'Guardar' }}
                         </button>
                     </div>
 

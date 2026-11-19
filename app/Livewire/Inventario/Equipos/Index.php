@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventario\Equipos;
 
+use App\Livewire\Inventario\CatalogosPorCategoria;
 use App\Models\Categoria;
 use App\Models\Departamento;
 use App\Models\Equipo;
@@ -21,7 +22,10 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.app')]
 class Index extends Component
 {
+    use CatalogosPorCategoria;
     use WithPagination;
+
+    private const TIPO_CATEGORIA = 'equipo';
 
     public string $desde = '';
 
@@ -229,6 +233,19 @@ class Index extends Component
         $this->resetFormulario();
     }
 
+    public function updatedCategoriaId(): void
+    {
+        $categoria = $this->categoriaActiva();
+        $this->resetValidation('categoriaId');
+        $this->limpiarMarcaPorCategoria($categoria);
+
+        if ($this->tipoEquipoId !== '' && ! $this->opcionDisponible(TipoEquipo::class, $categoria, $this->tipoEquipoId)) {
+            $this->tipoEquipoId = '';
+        }
+
+        $this->resetValidation('tipoEquipoId');
+    }
+
     public function abrirModalCatalogo(string $tipo): void
     {
         $tiposPermitidos = [
@@ -242,6 +259,7 @@ class Index extends Component
             return;
         }
 
+        $this->reset('vincularExistente', 'catalogoExistenteId');
         $this->tipoCatalogo = $tipo;
         $this->nuevoNombreCatalogo = '';
         $this->nuevaSiglaDepartamento = '';
@@ -253,6 +271,7 @@ class Index extends Component
 
     public function cerrarModalCatalogo(): void
     {
+        $this->reset('vincularExistente', 'catalogoExistenteId');
         $this->mostrarModalCatalogo = false;
         $this->tipoCatalogo = '';
         $this->nuevoNombreCatalogo = '';
@@ -294,6 +313,12 @@ class Index extends Component
 
     public function guardarCatalogoRapido(): void
     {
+        if ($this->vincularExistente && $this->modeloCatalogoVinculable() !== null) {
+            $this->vincularCatalogoRapido();
+
+            return;
+        }
+
         $this->validate(
             $this->rulesCatalogoRapido(),
             $this->messagesCatalogoRapido()
@@ -338,6 +363,7 @@ class Index extends Component
                 ]);
 
                 $this->categoriaId = (string) $categoria->id;
+                $this->updatedCategoriaId();
 
                 return true;
             }
@@ -345,6 +371,7 @@ class Index extends Component
             /* Tipo de equipo */
 
             if ($this->tipoCatalogo === 'tipo_equipo') {
+                $categoria = $this->exigirCategoriaParaAltaRapida();
 
                 $duplicado = TipoEquipo::query()
                     ->whereRaw(
@@ -356,7 +383,7 @@ class Index extends Component
                 if ($duplicado) {
                     $this->addError(
                         'nuevoNombreCatalogo',
-                        'Ya existe un tipo de equipo con este nombre.'
+                        'Ya existe un tipo de equipo con este nombre. Elija «Vincular existente» para usarlo.'
                     );
 
                     return false;
@@ -367,6 +394,7 @@ class Index extends Component
                     'activo' => true,
                     'creado_por' => Auth::id(),
                 ]);
+                $tipoEquipo->categorias()->attach($categoria->id);
 
                 RegistrarAuditoria::creacion($tipoEquipo, [
                     'nombre',
@@ -423,6 +451,7 @@ class Index extends Component
             /* Marca */
 
             if ($this->tipoCatalogo === 'marca') {
+                $categoria = $this->exigirCategoriaParaAltaRapida();
 
                 $duplicada = Marca::query()
                     ->whereRaw(
@@ -434,7 +463,7 @@ class Index extends Component
                 if ($duplicada) {
                     $this->addError(
                         'nuevoNombreCatalogo',
-                        'Ya existe una marca con este nombre.'
+                        'Ya existe una marca con este nombre. Elija «Vincular existente» para usarla.'
                     );
 
                     return false;
@@ -445,6 +474,7 @@ class Index extends Component
                     'activo' => true,
                     'creado_por' => Auth::id(),
                 ]);
+                $marca->categorias()->attach($categoria->id);
 
                 RegistrarAuditoria::creacion($marca, [
                     'nombre',
@@ -489,12 +519,16 @@ class Index extends Component
     {
         return [
             'categoriaId' => [
+                'bail',
                 'required',
+                'integer',
                 'exists:categorias,id',
             ],
 
             'tipoEquipoId' => [
+                'bail',
                 'required',
+                'integer',
                 'exists:tipos_equipo,id',
             ],
 
@@ -504,7 +538,9 @@ class Index extends Component
             ],
 
             'marcaId' => [
+                'bail',
                 'required',
+                'integer',
                 'exists:marcas,id',
             ],
 
@@ -546,10 +582,12 @@ class Index extends Component
             'categoriaId.required' => 'Debe seleccionar una categoría.',
 
             'categoriaId.exists' => 'La categoría seleccionada no es válida.',
+            'categoriaId.integer' => 'La categoría seleccionada no es válida.',
 
             'tipoEquipoId.required' => 'Debe seleccionar un tipo de equipo.',
 
             'tipoEquipoId.exists' => 'El tipo de equipo seleccionado no es válido.',
+            'tipoEquipoId.integer' => 'El tipo de equipo seleccionado no es válido.',
 
             'departamentoId.required' => 'Debe seleccionar el departamento de procedencia.',
 
@@ -558,6 +596,7 @@ class Index extends Component
             'marcaId.required' => 'Debe seleccionar una marca.',
 
             'marcaId.exists' => 'La marca seleccionada no es válida.',
+            'marcaId.integer' => 'La marca seleccionada no es válida.',
 
             'modelo.max' => 'El modelo no puede superar los 100 caracteres.',
 
@@ -597,6 +636,15 @@ class Index extends Component
                     ->whereKey($this->equipoId)
                     ->lockForUpdate()
                     ->firstOrFail();
+            }
+
+            $categoria = $this->validarCategoriaYMarca($equipo);
+
+            if (! $this->conservaOpcion($equipo, 'tipo_equipo_id', $this->tipoEquipoId)
+                && ! $this->opcionDisponible(TipoEquipo::class, $categoria, $this->tipoEquipoId, bloquear: true)) {
+                throw ValidationException::withMessages([
+                    'tipoEquipoId' => 'Seleccione un tipo de equipo activo vinculado a la categoría.',
+                ]);
             }
 
             /* Validar número de inventario único */
@@ -737,26 +785,34 @@ class Index extends Component
             'departamento' => Departamento::query()->orderBy('nombre')->get(),
         ];
 
-        $categorias = Categoria::query()
-            ->where('activo', true)
-            ->where('aplica_a', 'equipo')
-            ->orderBy('nombre')
-            ->get();
+        $registro = $this->mostrarModal && $this->equipoId !== null
+            ? Equipo::find($this->equipoId)
+            : null;
+        $categoria = $this->mostrarModal ? $this->categoriaActiva() : null;
+        $categoriaCatalogo = $categoria;
+        $catalogoVinculable = $this->modeloCatalogoVinculable() !== null;
+        $opcionesCatalogoExistente = $this->opcionesCatalogoExistente($categoria);
+        $categoriaDisponible = $categoria !== null;
+        $categorias = $this->categoriasDelFormulario($registro);
 
-        $tiposEquipo = TipoEquipo::query()
-            ->where('activo', true)
-            ->orderBy('nombre')
-            ->get();
+        $tiposEquipo = $this->opcionesDelCatalogo(
+            TipoEquipo::class,
+            $categoria,
+            $this->conservaOpcion($registro, 'tipo_equipo_id', $this->tipoEquipoId),
+            $this->tipoEquipoId,
+        );
 
         $departamentos = Departamento::query()
             ->where('activo', true)
             ->orderBy('nombre')
             ->get();
 
-        $marcas = Marca::query()
-            ->where('activo', true)
-            ->orderBy('nombre')
-            ->get();
+        $marcas = $this->opcionesDelCatalogo(
+            Marca::class,
+            $categoria,
+            $this->conservaOpcion($registro, 'marca_id', $this->marcaId),
+            $this->marcaId,
+        );
 
         return view(
             'livewire.inventario.equipos.index',
@@ -765,6 +821,10 @@ class Index extends Component
                 'dateErrors',
                 'filterOptions',
                 'categorias',
+                'categoriaDisponible',
+                'categoriaCatalogo',
+                'catalogoVinculable',
+                'opcionesCatalogoExistente',
                 'tiposEquipo',
                 'departamentos',
                 'marcas'
