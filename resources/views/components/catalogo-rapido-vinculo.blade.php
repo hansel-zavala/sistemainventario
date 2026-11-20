@@ -14,7 +14,7 @@
             type="button"
             wire:click="$set('vincularExistente', true)"
             aria-pressed="{{ $vincularExistente ? 'true' : 'false' }}"
-            class="min-h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 aria-pressed:border-blue-600 aria-pressed:bg-blue-50 aria-pressed:text-blue-800"
+            class="cursor-pointer min-h-10 rounded-full border border-gray-300 px-3 text-sm text-gray-700 aria-pressed:border-blue-600 aria-pressed:bg-blue-50 aria-pressed:text-blue-800"
         >
             Vincular existente
         </button>
@@ -22,7 +22,7 @@
             type="button"
             wire:click="$set('vincularExistente', false)"
             aria-pressed="{{ $vincularExistente ? 'false' : 'true' }}"
-            class="min-h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 aria-pressed:border-blue-600 aria-pressed:bg-blue-50 aria-pressed:text-blue-800"
+            class="cursor-pointer min-h-10 rounded-full border border-gray-300 px-3 text-sm text-gray-700 aria-pressed:border-blue-600 aria-pressed:bg-blue-50 aria-pressed:text-blue-800"
         >
             Crear nuevo
         </button>
@@ -37,9 +37,9 @@
                 id="catalogo-existente"
                 wire:model="catalogoExistenteId"
                 @disabled($opciones->isEmpty())
-                class="w-full rounded-lg border border-gray-300 px-4 py-2 disabled:bg-gray-100"
+                class="cursor-pointer w-full rounded-full border border-gray-300 px-4 py-2 disabled:bg-gray-100"
             >
-                <option value="">Seleccione una opción</option>
+                <option value="">Seleccione una opción de equipos existente</option>
                 @foreach ($opciones as $opcion)
                     <option wire:key="catalogo-existente-{{ $opcion->id }}" value="{{ $opcion->id }}">
                         {{ $opcion->nombre }}

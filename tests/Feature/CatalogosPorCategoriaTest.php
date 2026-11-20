@@ -60,6 +60,59 @@ class CatalogosPorCategoriaTest extends TestCase
             ->assertViewHas('tiposEquipo', fn ($tipos): bool => $tipos->modelKeys() === [$impresora->id]);
     }
 
+    public function test_equipment_registration_requires_every_field(): void
+    {
+        $user = User::factory()->create();
+
+        Livewire::actingAs($user)->test(Equipos::class)->call('crearEquipo')
+            ->set('observaciones', '   ')
+            ->call('guardarEquipo')
+            ->assertHasErrors([
+                'categoriaId' => 'required',
+                'tipoEquipoId' => 'required',
+                'departamentoId' => 'required',
+                'marcaId' => 'required',
+                'numeroInventario' => 'required',
+                'numeroSerie' => 'required',
+                'modelo' => 'required',
+                'color' => 'required',
+                'observaciones' => 'required',
+            ])
+            ->assertSee('El número de serie es obligatorio.')
+            ->assertSee('El modelo es obligatorio.')
+            ->assertSee('El color es obligatorio.')
+            ->assertSee('Las observaciones son obligatorias.')
+            ->assertSet('mostrarModal', true);
+
+        $this->assertDatabaseCount('equipos', 0);
+    }
+
+    public function test_equipment_with_missing_details_can_still_be_edited(): void
+    {
+        $user = User::factory()->create();
+        $equipo = Equipo::factory()->create([
+            'creado_por' => $user->id,
+            'modelo' => null,
+            'color' => null,
+            'numero_serie' => null,
+            'observaciones' => null,
+        ]);
+
+        Livewire::actingAs($user)->test(Equipos::class)->call('editarEquipo', $equipo->id)
+            ->set('numeroInventario', 'INV-EDITADO')
+            ->call('guardarEquipo')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('equipos', [
+            'id' => $equipo->id,
+            'numero_inventario' => 'INV-EDITADO',
+            'modelo' => null,
+            'color' => null,
+            'numero_serie' => null,
+            'observaciones' => null,
+        ]);
+    }
+
     #[TestWith([Herramientas::class, 'Herramienta', 'herramienta', 'herramientas', ['tipoControl' => 'cantidad']])]
     #[TestWith([Insumos::class, 'Insumo', 'insumo', 'insumos', []])]
     public function test_optional_brand_is_filtered_and_an_incompatible_choice_is_rejected(
@@ -105,6 +158,10 @@ class CatalogosPorCategoriaTest extends TestCase
             ->set('categoriaId', (string) $wrongScope->id)
             ->set('departamentoId', (string) $departamento->id)
             ->set('numeroInventario', 'REL-0001')
+            ->set('numeroSerie', 'SN-0001')
+            ->set('modelo', 'Latitude 5420')
+            ->set('color', 'Negro')
+            ->set('observaciones', 'Incluye cargador.')
             ->set('tipoEquipoId', (string) $tipo->id)
             ->set('marcaId', (string) $marca->id);
 
@@ -122,6 +179,8 @@ class CatalogosPorCategoriaTest extends TestCase
         $this->assertDatabaseHas('equipos', [
             'numero_inventario' => 'REL-0001', 'categoria_id' => $categoria->id,
             'tipo_equipo_id' => $tipo->id, 'marca_id' => $marca->id,
+            'numero_serie' => 'SN-0001', 'modelo' => 'Latitude 5420',
+            'color' => 'Negro', 'observaciones' => 'Incluye cargador.',
         ]);
     }
 
@@ -201,7 +260,10 @@ class CatalogosPorCategoriaTest extends TestCase
                 ->assertHasNoErrors()
                 ->assertSet('tipoEquipoId', (string) $tipo->id)
                 ->set('departamentoId', (string) $departamento->id)
-                ->set('numeroInventario', 'REL-RAPIDA');
+                ->set('numeroInventario', 'REL-RAPIDA')
+                ->set('numeroSerie', 'SERIE-RAPIDA')
+                ->set('modelo', 'Latitude 5420')
+                ->set('color', 'Negro');
             $this->assertDatabaseHas('categoria_tipo_equipo', ['categoria_id' => $categoria->id, 'tipo_equipo_id' => $tipo->id]);
         } else {
             $unidad = UnidadMedida::factory()->create(['creado_por' => $user->id]);

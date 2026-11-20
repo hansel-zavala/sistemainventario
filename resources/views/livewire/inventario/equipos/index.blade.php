@@ -15,14 +15,14 @@
         <button
             type="button"
             wire:click="crearEquipo"
-            class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+            class="cursor-pointer rounded-full bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
         >
             + Nuevo equipo
         </button>
 
     </div>
 
-
+    <!-- Mensajes de confirmacion de cracion de equipos -->
     @if (session()->has('mensaje'))
 
         <div class="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-700">
@@ -31,16 +31,18 @@
 
     @endif
 
-
+    <!-- Mensajes de error -->  
     @error('estadoEquipo')
         <p role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ $message }}</p>
     @enderror
 
+    <!-- Filtros -->  
     @php
         $filterLabels = ['categoria' => 'Categoría', 'tipo' => 'Tipo de equipo', 'marca' => 'Marca', 'departamento' => 'Procedencia'];
         $statusLabels = ['disponible' => 'Disponible', 'prestado' => 'Prestado', 'inactivo' => 'Inactivo'];
     @endphp
 
+    <!-- tabla de equipos tecnológicos -->
     <x-data-table
         id="equipos"
         label="Tabla de equipos tecnológicos"
@@ -60,25 +62,18 @@
                 :visible-columns="$visibleColumns" :show-date-fields="false" :export-filters="[...$filters, 'desde' => $desde, 'hasta' => $hasta]" />
         </x-slot:export>
 
+        <!-- Filtros -->
         <x-slot:filters>
-            @foreach ($filterLabels as $name => $label)
-                <label wire:key="filter-{{ $name }}" class="text-sm font-medium text-muted">{{ $label }}
-                    <select wire:model.live="filters.{{ $name }}" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                        <option value="">{{ $name === 'tipo' ? 'Todos' : 'Todas' }}</option>
-                        @foreach ($filterOptions[$name] as $option)
-                            <option wire:key="filter-{{ $name }}-{{ $option->id }}" value="{{ $option->id }}">{{ $option->nombre }}</option>
-                        @endforeach
-                    </select>
-                </label>
+            @foreach ($filterLabels + ['estado' => 'Estado'] as $name => $label)
+                @php
+                    $options = $name === 'estado' ? $statusLabels : $filterOptions[$name]->pluck('nombre', 'id');
+                @endphp
+
+                <x-searchable-select wire:key="filter-{{ $name }}" id="equipos-filter-{{ $name }}"
+                    :label="$label" :options="$options" :model="'filters.'.$name"
+                    :all-label="in_array($name, ['tipo', 'estado'], true) ? 'Todos' : 'Todas'"
+                    :class="$name === 'estado' ? 'sm:col-span-2' : ''" />
             @endforeach
-            <label class="text-sm font-medium text-muted sm:col-span-2">Estado
-                <select wire:model.live="filters.estado" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
-                    <option value="">Todos</option>
-                    @foreach ($statusLabels as $value => $label)
-                        <option wire:key="equipos-estado-{{ $value }}" value="{{ $value }}">{{ $label }}</option>
-                    @endforeach
-                </select>
-            </label>
             <x-table-date-filters id="equipos" :errors="$dateErrors" />
         </x-slot:filters>
 
@@ -86,6 +81,7 @@
             Mostrando {{ $equipos->count() }} de {{ $equipos->total() }} equipos encontrados
         </x-slot:summary>
 
+        <!-- Flechas de organizacion -->
         <x-slot:filterChips>
             <x-table-date-chips id="equipos" :desde="$desde" :hasta="$hasta" />
             @foreach ($filterLabels + ['estado' => 'Estado'] as $name => $label)
@@ -105,6 +101,7 @@
             @endforeach
         </x-slot:filterChips>
 
+        <!-- Datos de los equipos -->
         @forelse ($equipos as $equipo)
             <tr wire:key="equipment-{{ $equipo->id }}" class="hover:bg-canvas/60">
                 @foreach (\App\Services\EquiposTable::COLUMNS as $column => $label)
@@ -113,6 +110,11 @@
                             @if ($column === 'tipo_equipo')
                                 <div class="font-medium">{{ $equipo->tipoEquipo->nombre }}</div>
                                 <div class="mt-0.5 text-xs text-muted">{{ $equipo->categoria->nombre }}</div>
+                            @elseif ($column === 'marca')
+                                <div class="font-medium">{{ $equipo->marca->nombre }}</div>
+                                @if (filled($equipo->modelo))
+                                    <div class="mt-0.5 text-xs text-muted">{{ $equipo->modelo }}</div>
+                                @endif
                             @elseif ($column === 'disponibilidad')
                                 <span @class(['inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold', 'bg-gray-100 text-gray-600' => !$equipo->activo, 'bg-amber-100 text-amber-800' => $equipo->activo && $equipo->esta_prestado, 'bg-green-100 text-green-800' => $equipo->activo && !$equipo->esta_prestado])>
                                     {{ \App\Services\EquiposTable::status($equipo) }}
@@ -123,6 +125,8 @@
                         </td>
                     @endif
                 @endforeach
+
+                <!-- Botones de acción -->
                 <td class="px-4 py-2 text-right">
                     <div class="flex justify-end gap-1">
                         <button type="button" wire:click="editarEquipo({{ $equipo->id }})" class="icon-button text-blue-600"
@@ -135,421 +139,238 @@
                     </div>
                 </td>
             </tr>
+
+        <!-- Condicion si no se encuentran equipos con estos filtros -->
         @empty
             <tr><td colspan="{{ count($visibleColumns) + 1 }}" class="px-6 py-12 text-center text-muted">No se encontraron equipos con estos filtros.</td></tr>
         @endforelse
 
+        <!-- Paginacion -->      
         <x-slot:pagination>
             <x-table-pagination :paginator="$equipos" label="Paginación de equipos" />
         </x-slot:pagination>
     </x-data-table>
 
 
+    <!-- Modal de creacion y edicion -->
     @if ($mostrarModal)
+        
+        <!-- Definicion de variables del modal -->
+        @php
+            $esRegistro = $equipoId === null;
+            $claseControl = 'w-full border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-900 placeholder:text-neutral-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:bg-neutral-100 disabled:text-neutral-500 aria-invalid:border-red-600';
+            $claseError = 'mt-1 text-sm text-red-700';
+            $camposCatalogo = [
+                ['categoriaId', 'Categoría', $categorias, 'categoria', 'Nueva categoría'],
+                ['tipoEquipoId', 'Tipo de equipo', $tiposEquipo, 'tipo_equipo', 'Nuevo tipo de equipo'],
+                ['departamentoId', 'Departamento de procedencia', $departamentos, 'departamento', 'Nuevo departamento'],
+                ['marcaId', 'Marca', $marcas, 'marca', 'Nueva marca'],
+            ];
+        @endphp
 
-        <div class="fixed inset-0 z-50 overflow-y-auto bg-black/50 px-4 py-8">
+        <!-- Creacion y edicion del modal -->
+        <dialog wire:key="modal-equipo" wire:ignore.self x-data x-init="$el.showModal()"
+            x-on:cancel.prevent="$wire.cerrarModal()"
+            aria-labelledby="titulo-modal-equipo" aria-describedby="descripcion-modal-equipo"
+            class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[43rem] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-xl backdrop:bg-black/50 sm:px-5">
+            <header class="flex items-start gap-3 border-b border-neutral-200 pb-4">
+                <span class="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-neutral-100">
+                    <x-icon name="monitor" class="size-4" />
+                </span>
 
-            <div class="mx-auto w-full max-w-3xl rounded-xl bg-white p-6 shadow-xl">
-
-                <div class="mb-6 flex items-center justify-between">
-
-                    <div>
-
-                        <h2 class="text-xl font-bold text-gray-800">
-                            {{ $equipoId
-                                ? 'Editar equipo'
-                                : 'Nuevo equipo'
-                            }}
-                        </h2>
-
-                        <p class="mt-1 text-sm text-gray-500">
-                            Complete la información básica del equipo.
-                        </p>
-
-                    </div>
-
-
-                    <button
-                        type="button"
-                        wire:click="cerrarModal"
-                        class="text-2xl text-gray-400 hover:text-gray-600"
-                    >
-                        ×
-                    </button>
-
+                <div class="min-w-0 flex-1">
+                    <h2 id="titulo-modal-equipo" class="text-lg font-semibold">
+                        {{ $esRegistro ? 'Nuevo equipo' : 'Editar equipo' }}
+                    </h2>
+                    <p id="descripcion-modal-equipo" class="mt-0.5 text-xs text-neutral-600">
+                        {{ $esRegistro ? 'Registra la información del equipo en el inventario.' : 'Actualiza la información del equipo en el inventario.' }}
+                    </p>
                 </div>
 
-                @if (session()->has('mensajeCatalogo'))
-                    <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                        {{ session('mensajeCatalogo') }}
+                <button type="button" wire:click="cerrarModal" autofocus aria-label="Cerrar"
+                    class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
+                    <x-icon name="close" class="size-4" />
+                </button>
+            </header>
+
+            @if (session()->has('mensajeCatalogo'))
+                <p role="status" class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    {{ session('mensajeCatalogo') }}
+                </p>
+            @endif
+
+            <form wire:submit="guardarEquipo" class="divide-y divide-neutral-200">
+                <section aria-labelledby="informacion-general-equipo" class="py-5">
+                    <h3 id="informacion-general-equipo" class="mb-4 flex items-center gap-2 text-sm font-semibold">
+                        <x-icon name="audit" class="size-4 text-neutral-600" />
+                        Información general
+                    </h3>
+
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        @foreach ($camposCatalogo as [$campo, $etiqueta, $opciones, $catalogo, $accionCatalogo])
+                            @php
+                                $dependeDeCategoria = in_array($catalogo, ['tipo_equipo', 'marca'], true);
+                                $inhabilitado = $dependeDeCategoria && ! $categoriaDisponible;
+                                $idControl = 'equipo-catalogo-'.$catalogo;
+                            @endphp
+
+                            <div wire:key="equipo-campo-{{ $catalogo }}">
+                                <label for="{{ $idControl }}" class="mb-1 block text-sm font-medium">
+                                    {{ $etiqueta }} <span aria-hidden="true" class="text-red-600">*</span>
+                                </label>
+
+                                <div class="flex items-center gap-1.5">
+                                    <div class="relative min-w-0 flex-1">
+                                        <select id="{{ $idControl }}"
+                                            @if ($catalogo === 'categoria') wire:model.live="{{ $campo }}" @else wire:model="{{ $campo }}" @endif
+                                            wire:key="{{ $idControl }}-{{ $dependeDeCategoria ? $categoriaId : 'opciones' }}"
+                                            required @disabled($inhabilitado)
+                                            @error($campo) aria-invalid="true" aria-describedby="{{ $idControl }}-error" @enderror
+                                            class="{{ $claseControl }} equipment-select cursor-pointer rounded-full pr-9 invalid:text-neutral-500 disabled:cursor-not-allowed">
+                                            <option value="">{{ $inhabilitado ? 'Seleccione una categoría activa' : 'Seleccione una opción' }}</option>
+
+                                            @foreach ($opciones as $opcion)
+                                                <option wire:key="{{ $idControl }}-opcion-{{ $opcion->id }}" value="{{ $opcion->id }}">
+                                                    {{ $opcion->nombre }}@if ($catalogo === 'departamento' && $opcion->sigla) ({{ $opcion->sigla }})@endif
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                        <x-icon name="chevron" class="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 rotate-90 text-neutral-500" />
+                                    </div>
+
+                                    <button type="button" wire:click="abrirModalCatalogo('{{ $catalogo }}')"
+                                        aria-label="{{ $accionCatalogo }}" title="{{ $accionCatalogo }}" @disabled($inhabilitado)
+                                        class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-neutral-300 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50">
+                                        <x-icon name="plus" class="size-4" />
+                                    </button>
+                                </div>
+
+                                @if ($dependeDeCategoria && $categoriaDisponible && $opciones->isEmpty())
+                                    <p role="status" class="mt-1 text-xs text-neutral-600">
+                                        {{ $catalogo === 'marca' ? 'No hay marcas activas vinculadas a esta categoría.' : 'No hay tipos de equipo activos vinculados a esta categoría.' }}
+                                    </p>
+                                @endif
+
+                                @error($campo)
+                                    <p id="{{ $idControl }}-error" class="{{ $claseError }}">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        @endforeach
                     </div>
-                @endif
+                </section>
 
+                <section aria-labelledby="identificacion-equipo" class="py-5">
+                    <h3 id="identificacion-equipo" class="mb-4 flex items-center gap-2 text-sm font-semibold">
+                        <x-icon name="tag" class="size-4 text-neutral-600" />
+                        Identificación del equipo
+                    </h3>
 
-                <form
-                    wire:submit="guardarEquipo"
-                    class="space-y-5"
-                >
-
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-
-                        {{-- Categoría --}}
+                    <div class="grid gap-3 sm:grid-cols-2">
                         <div>
-
-                            <label for="categoria-inventario" class="mb-1 block text-sm font-medium text-gray-700">
-                                Categoría *
+                            <label for="numero-inventario-equipo" class="mb-1 block text-sm font-medium">
+                                Número de inventario <span aria-hidden="true" class="text-red-600">*</span>
                             </label>
-
-                            <div class="flex">
-                                <select
-                                    id="categoria-inventario"
-                                    wire:model.live="categoriaId"
-                                    class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-                                    <option value="">
-                                        Seleccione...
-                                    </option>
-
-                                    @foreach ($categorias as $categoria)
-                                        <option value="{{ $categoria->id }}">
-                                            {{ $categoria->nombre }}
-                                        </option>
-                                    @endforeach
-                                </select>
-
-                                <button
-                                    type="button"
-                                    wire:click="abrirModalCatalogo('categoria')"
-                                    title="Nueva categoría"
-                                    class="inline-flex items-center justify-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors focus:outline-none"
-                                >
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            @error('categoriaId')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Tipo --}}
-                        <div>
-
-                            <label for="tipo-equipo-inventario" class="mb-1 block text-sm font-medium text-gray-700">
-                                Tipo de equipo *
-                            </label>
-
-                            <div class="flex">
-                                <select
-                                    id="tipo-equipo-inventario"
-                                    wire:model="tipoEquipoId"
-                                    wire:key="tipo-equipo-categoria-{{ $categoriaId }}"
-                                    @disabled(! $categoriaDisponible)
-                                    class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-                                    <option value="">
-                                        {{ $categoriaDisponible ? 'Seleccione...' : 'Seleccione una categoría activa' }}
-                                    </option>
-
-                                    @foreach ($tiposEquipo as $tipo)
-                                        <option wire:key="tipo-equipo-opcion-{{ $tipo->id }}" value="{{ $tipo->id }}">
-                                            {{ $tipo->nombre }}
-                                        </option>
-                                    @endforeach
-                                </select>
-
-                                <button
-                                    type="button"
-                                    wire:click="abrirModalCatalogo('tipo_equipo')"
-                                    @disabled(! $categoriaDisponible)
-                                    title="Nuevo tipo de equipo"
-                                    class="inline-flex items-center justify-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors focus:outline-none"
-                                >
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            @if ($categoriaDisponible && $tiposEquipo->isEmpty())
-                                <p role="status" class="mt-1 text-sm text-gray-600">No hay tipos de equipo activos vinculados a esta categoría.</p>
-                            @endif
-
-                            @error('tipoEquipoId')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Departamento --}}
-                        <div>
-
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Departamento de procedencia *
-                            </label>
-
-                            <div class="flex">
-                                <select
-                                    wire:model="departamentoId"
-                                    class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-                                    <option value="">
-                                        Seleccione...
-                                    </option>
-
-                                    @foreach ($departamentos as $departamento)
-                                        <option value="{{ $departamento->id }}">
-                                            {{ $departamento->nombre }}
-                                            @if ($departamento->sigla)
-                                                ({{ $departamento->sigla }})
-                                            @endif
-                                        </option>
-                                    @endforeach
-                                </select>
-
-                                <button
-                                    type="button"
-                                    wire:click="abrirModalCatalogo('departamento')"
-                                    title="Nuevo departamento"
-                                    class="inline-flex items-center justify-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors focus:outline-none"
-                                >
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            @error('departamentoId')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Marca --}}
-                        <div>
-
-                            <label for="marca-inventario" class="mb-1 block text-sm font-medium text-gray-700">
-                                Marca *
-                            </label>
-
-                            <div class="flex">
-                                <select
-                                    id="marca-inventario"
-                                    wire:model="marcaId"
-                                    wire:key="marca-categoria-{{ $categoriaId }}"
-                                    @disabled(! $categoriaDisponible)
-                                    class="w-full rounded-l-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-                                    <option value="">
-                                        {{ $categoriaDisponible ? 'Seleccione...' : 'Seleccione una categoría activa' }}
-                                    </option>
-
-                                    @foreach ($marcas as $marca)
-                                        <option wire:key="marca-opcion-{{ $marca->id }}" value="{{ $marca->id }}">
-                                            {{ $marca->nombre }}
-                                        </option>
-                                    @endforeach
-                                </select>
-
-                                <button
-                                    type="button"
-                                    wire:click="abrirModalCatalogo('marca')"
-                                    @disabled(! $categoriaDisponible)
-                                    title="Nueva marca"
-                                    class="inline-flex items-center justify-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors focus:outline-none"
-                                >
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            @if ($categoriaDisponible && $marcas->isEmpty())
-                                <p role="status" class="mt-1 text-sm text-gray-600">No hay marcas activas vinculadas a esta categoría.</p>
-                            @endif
-
-                            @error('marcaId')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Modelo --}}
-                        <div>
-
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Modelo
-                            </label>
-
-                            <input
-                                type="text"
-                                wire:model="modelo"
-                                placeholder="Ej. Latitude 5420"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                            >
-
-                            @error('modelo')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Color --}}
-                        <div>
-
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Color
-                            </label>
-
-                            <input
-                                type="text"
-                                wire:model="color"
-                                placeholder="Ej. Negro"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                            >
-
-                            @error('color')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Serie --}}
-                        <div>
-
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Número de serie
-                            </label>
-
-                            <input
-                                type="text"
-                                wire:model="numeroSerie"
-                                placeholder="Serie del fabricante"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                            >
-
-                            @error('numeroSerie')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-
-                        </div>
-
-
-                        {{-- Inventario --}}
-                        <div>
-
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Número de inventario *
-                            </label>
-
-                            <input
-                                type="text"
-                                wire:model="numeroInventario"
-                                placeholder="Número de inventario municipal"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                            >
-
+                            <input id="numero-inventario-equipo" type="text" wire:model="numeroInventario"
+                                required maxlength="100" placeholder="Ej. INV-000125" class="{{ $claseControl }} rounded-full"
+                                @error('numeroInventario') aria-invalid="true" aria-describedby="error-numero-inventario-equipo" @enderror>
                             @error('numeroInventario')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
+                                <p id="error-numero-inventario-equipo" class="{{ $claseError }}">{{ $message }}</p>
                             @enderror
-
                         </div>
 
+                        <div>
+                            <label for="numero-serie-equipo" class="mb-1 block text-sm font-medium">
+                                Número de serie @if ($esRegistro)<span aria-hidden="true" class="text-red-600">*</span>@endif
+                            </label>
+                            <input id="numero-serie-equipo" type="text" wire:model="numeroSerie"
+                                @required($esRegistro) maxlength="100" placeholder="Serie del fabricante" class="{{ $claseControl }} rounded-full"
+                                @error('numeroSerie') aria-invalid="true" aria-describedby="error-numero-serie-equipo" @enderror>
+                            @error('numeroSerie')
+                                <p id="error-numero-serie-equipo" class="{{ $claseError }}">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </div>
+                </section>
 
+                <section aria-labelledby="caracteristicas-equipo" class="py-5">
+                    <h3 id="caracteristicas-equipo" class="mb-4 flex items-center gap-2 text-sm font-semibold">
+                        <x-icon name="columns" class="size-4 text-neutral-600" />
+                        Características adicionales
+                    </h3>
 
-                    {{-- Observaciones --}}
-                    <div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <label for="modelo-equipo" class="mb-1 block text-sm font-medium">
+                                Modelo @if ($esRegistro)<span aria-hidden="true" class="text-red-600">*</span>@endif
+                            </label>
+                            <input id="modelo-equipo" type="text" wire:model="modelo"
+                                @required($esRegistro) maxlength="100" placeholder="Ej. Latitude 5420" class="{{ $claseControl }} rounded-full"
+                                @error('modelo') aria-invalid="true" aria-describedby="error-modelo-equipo" @enderror>
+                            @error('modelo')
+                                <p id="error-modelo-equipo" class="{{ $claseError }}">{{ $message }}</p>
+                            @enderror
+                        </div>
 
-                        <label class="mb-1 block text-sm font-medium text-gray-700">
-                            Observaciones
-                        </label>
+                        <div>
+                            <label for="color-equipo" class="mb-1 block text-sm font-medium">
+                                Color @if ($esRegistro)<span aria-hidden="true" class="text-red-600">*</span>@endif
+                            </label>
+                            <input id="color-equipo" type="text" wire:model="color"
+                                @required($esRegistro) maxlength="50" placeholder="Ej. Negro" class="{{ $claseControl }} rounded-full"
+                                @error('color') aria-invalid="true" aria-describedby="error-color-equipo" @enderror>
+                            @error('color')
+                                <p id="error-color-equipo" class="{{ $claseError }}">{{ $message }}</p>
+                            @enderror
+                        </div>
 
-                        <textarea
-                            wire:model="observaciones"
-                            rows="4"
-                            placeholder="Observaciones adicionales del equipo..."
-                            class="w-full rounded-lg border border-gray-300 px-4 py-2"
-                        ></textarea>
-
-                        @error('observaciones')
-                            <p class="mt-1 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-
+                        <div class="sm:col-span-2">
+                            <label for="observaciones-equipo" class="mb-1 block text-sm font-medium">
+                                Observaciones @if ($esRegistro)<span aria-hidden="true" class="text-red-600">*</span>@endif
+                            </label>
+                            <textarea id="observaciones-equipo" wire:model="observaciones" @required($esRegistro)
+                                rows="3" maxlength="2000" placeholder="Detalles o características importantes del equipo..."
+                                class="{{ $claseControl }} block resize-y rounded-lg"
+                                @error('observaciones') aria-invalid="true" aria-describedby="error-observaciones-equipo" @enderror></textarea>
+                            @error('observaciones')
+                                <p id="error-observaciones-equipo" class="{{ $claseError }}">{{ $message }}</p>
+                            @enderror
+                        </div>
                     </div>
+                </section>
 
+                <footer class="flex flex-wrap items-center justify-between gap-3 pt-4">
+                    <p class="text-xs text-neutral-600"><span aria-hidden="true" class="text-red-600">* </span>Campos obligatorios</p>
 
-                    <div class="flex justify-end gap-3 border-t border-gray-100 pt-5">
-
-                        <button
-                            type="button"
-                            wire:click="cerrarModal"
-                            class="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
-                        >
+                    <div class="ml-auto flex flex-wrap justify-end gap-2">
+                        <button type="button" wire:click="cerrarModal"
+                            class="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-full border border-neutral-300 px-4 text-sm font-medium text-neutral-700 hover:bg-neutral-100">
                             Cancelar
                         </button>
 
-
-                        <button
-                            type="submit"
-                            class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
-                        >
-                            {{ $equipoId
-                                ? 'Guardar cambios'
-                                : 'Registrar equipo'
-                            }}
+                        <button type="submit" wire:loading.attr="disabled" wire:target="guardarEquipo"
+                            class="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-full bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
+                            <x-icon name="save" class="size-4" />
+                            {{ $esRegistro ? 'Registrar equipo' : 'Guardar cambios' }}
                         </button>
-
                     </div>
-
-                </form>
-
-            </div>
-
-        </div>
-
+                </footer>
+            </form>
+        </dialog>
     @endif
 
 
-    {{-- Modal de catálogo rápido --}}
+    <!-- Modal de catálogo rápido -->
     @if ($mostrarModalCatalogo)
-
-        <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
-
-            <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        
+        <dialog wire:key="modal-catalogo-equipo" wire:ignore.self x-data x-init="$el.showModal()"
+            x-on:cancel.prevent="$wire.cerrarModalCatalogo()"
+            aria-labelledby="titulo-modal-catalogo-equipo"
+            class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/50">
 
                 <div class="mb-4 flex items-center justify-between">
 
                     <div>
-                        <h3 class="text-lg font-bold text-gray-800">
+                        <h3 id="titulo-modal-catalogo-equipo" class="text-lg font-bold text-gray-800">
                             @if ($tipoCatalogo === 'categoria')
                                 Nueva categoría
                             @elseif ($tipoCatalogo === 'tipo_equipo')
@@ -570,12 +391,9 @@
                         @endunless
                     </div>
 
-                    <button
-                        type="button"
-                        wire:click="cerrarModalCatalogo"
-                        class="text-2xl text-gray-400 hover:text-gray-600"
-                    >
-                        ×
+                    <button type="button" wire:click="cerrarModalCatalogo" autofocus aria-label="Cerrar"
+                        class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
+                        <x-icon name="close" class="size-4" />
                     </button>
 
                 </div>
@@ -595,14 +413,14 @@
                     @unless ($catalogoVinculable && $vincularExistente)
                     <div>
                         <label class="mb-1 block text-sm font-medium text-gray-700">
-                            Nombre *
+                            Nombre <span aria-hidden="true" class="text-red-600">*</span>
                         </label>
 
                         <input
                             type="text"
                             wire:model="nuevoNombreCatalogo"
                             placeholder="Nombre del registro"
-                            class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                            class="w-full rounded-full border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
                             autofocus
                         >
 
@@ -616,14 +434,14 @@
                     @if ($tipoCatalogo === 'departamento')
                         <div>
                             <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Sigla
+                                Sigla <span aria-hidden="true" class="text-red-600">*</span>
                             </label>
 
                             <input
                                 type="text"
                                 wire:model="nuevaSiglaDepartamento"
                                 placeholder="Ej. RRHH"
-                                class="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+                                class="w-full rounded-full border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
                             >
 
                             @error('nuevaSiglaDepartamento')
@@ -640,14 +458,14 @@
                         <button
                             type="button"
                             wire:click="cerrarModalCatalogo"
-                            class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            class="cursor-pointer rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
                         >
                             Cancelar
                         </button>
 
                         <button
                             type="submit"
-                            class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                            class="cursor-pointer rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                         >
                             {{ $catalogoVinculable && $vincularExistente ? 'Vincular y seleccionar' : 'Guardar' }}
                         </button>
@@ -655,9 +473,7 @@
 
                 </form>
 
-            </div>
-
-        </div>
+        </dialog>
 
     @endif
 

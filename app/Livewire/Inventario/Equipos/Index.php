@@ -517,6 +517,8 @@ class Index extends Component
 
     protected function rules(): array
     {
+        $reglaDatosEquipo = $this->equipoId === null ? 'required' : 'nullable';
+
         return [
             'categoriaId' => [
                 'bail',
@@ -545,19 +547,19 @@ class Index extends Component
             ],
 
             'modelo' => [
-                'nullable',
+                $reglaDatosEquipo,
                 'string',
                 'max:100',
             ],
 
             'color' => [
-                'nullable',
+                $reglaDatosEquipo,
                 'string',
                 'max:50',
             ],
 
             'numeroSerie' => [
-                'nullable',
+                $reglaDatosEquipo,
                 'string',
                 'max:100',
             ],
@@ -569,7 +571,7 @@ class Index extends Component
             ],
 
             'observaciones' => [
-                'nullable',
+                $reglaDatosEquipo,
                 'string',
                 'max:2000',
             ],
@@ -598,16 +600,20 @@ class Index extends Component
             'marcaId.exists' => 'La marca seleccionada no es válida.',
             'marcaId.integer' => 'La marca seleccionada no es válida.',
 
+            'modelo.required' => 'El modelo es obligatorio.',
             'modelo.max' => 'El modelo no puede superar los 100 caracteres.',
 
+            'color.required' => 'El color es obligatorio.',
             'color.max' => 'El color no puede superar los 50 caracteres.',
 
+            'numeroSerie.required' => 'El número de serie es obligatorio.',
             'numeroSerie.max' => 'El número de serie no puede superar los 100 caracteres.',
 
             'numeroInventario.required' => 'El número de inventario es obligatorio.',
 
             'numeroInventario.max' => 'El número de inventario no puede superar los 100 caracteres.',
 
+            'observaciones.required' => 'Las observaciones son obligatorias.',
             'observaciones.max' => 'Las observaciones no pueden superar los 2000 caracteres.',
         ];
     }

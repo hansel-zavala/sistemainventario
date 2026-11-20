@@ -13,17 +13,6 @@
     @foreach ($visibleColumns as $column)
         <input wire:key="{{ $id }}-export-column-{{ $column }}" type="hidden" name="columns[]" value="{{ $column }}">
     @endforeach
-    @if ($showDateFields)
-    <fieldset class="space-y-2">
-        <legend class="mb-2 text-xs font-medium text-muted">Fecha de registro (opcional)</legend>
-        <label class="block text-sm">Desde
-            <input type="date" name="desde" x-model="desde" :max="hasta || null" class="mt-1 min-h-11 w-full rounded-lg border border-line px-3">
-        </label>
-        <label class="block text-sm">Hasta
-            <input type="date" name="hasta" x-model="hasta" :min="desde || null" class="mt-1 min-h-11 w-full rounded-lg border border-line px-3">
-        </label>
-    </fieldset>
-    @endif
     <div class="mt-3 grid gap-1">
         <button name="format" value="xlsx" class="secondary-button justify-start">Excel (.xlsx)</button>
         <button name="format" value="csv" class="secondary-button justify-start">CSV (.csv)</button>

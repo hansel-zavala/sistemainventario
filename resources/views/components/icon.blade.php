@@ -39,6 +39,8 @@
         'arrow-up' => 'M12 20V4 m-6 6 6-6 6 6',
         'arrow-down' => 'M12 4v16 m-6-6 6 6 6-6',
         'check' => 'm5 12 4 4L19 6',
+        'plus' => 'M12 5v14 M5 12h14',
+        'save' => 'M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z M7 3v6h10V3 M7 21v-8h10v8',
     ];
 @endphp
 
