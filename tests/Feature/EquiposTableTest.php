@@ -7,7 +7,9 @@ use App\Livewire\Movimientos\Prestamos\Index as PrestamosIndex;
 use App\Models\Equipo;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
+use App\Models\PrestamoDevolucion;
 use App\Models\User;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
 use OpenSpout\Reader\XLSX\Reader;
@@ -157,6 +159,64 @@ class EquiposTableTest extends TestCase
         $this->assertDatabaseHas('auditorias', ['registro_id' => $equipo->id, 'accion' => 'activacion']);
     }
 
+    public function test_equipment_detail_shows_the_selected_record_and_can_open_its_edit_form(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $equipo = Equipo::factory()->create(['observaciones' => 'Revisar el cable de alimentación.']);
+        Equipo::factory()->create(['observaciones' => 'Notas de otro equipo.']);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->call('verEquipo', $equipo->id)
+            ->assertSet('equipoDetalleId', $equipo->id)
+            ->assertSee('Revisar el cable de alimentación.')
+            ->assertSee('Historial técnico')
+            ->assertSee('Este equipo aún no tiene movimientos registrados.')
+            ->assertDontSee('Notas de otro equipo.')
+            ->call('cerrarDetalle')
+            ->assertSet('equipoDetalleId', null)
+            ->assertDontSee('Revisar el cable de alimentación.')
+            ->call('verEquipo', $equipo->id)
+            ->call('editarEquipo', $equipo->id)
+            ->assertSet('equipoDetalleId', null)
+            ->assertSet('equipoId', $equipo->id)
+            ->assertSet('mostrarModal', true);
+    }
+
+    #[TestWith([true])]
+    #[TestWith([false])]
+    public function test_equipment_movements_combine_audited_changes_and_availability_without_duplicate_returns(bool $hasReturnRecord): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $equipo = Equipo::factory()->create(['creado_por' => $user->id]);
+        $other = Equipo::factory()->create();
+        $this->loan($other);
+        $loan = $this->loan($equipo);
+        $loan->prestamo->update(['fecha_prestamo' => now()->subDays(2)]);
+        $returnedAt = now()->subDay();
+        $loan->update(['estado' => 'devuelto', 'fecha_devolucion' => $returnedAt, 'recibido_por' => $user->id]);
+        if ($hasReturnRecord) {
+            PrestamoDevolucion::create([
+                'prestamo_detalle_id' => $loan->id,
+                'cantidad' => 1,
+                'fecha_devolucion' => $returnedAt,
+                'recibido_por' => $user->id,
+            ]);
+        }
+
+        $this->actingAs($user);
+        RegistrarAuditoria::guardarActualizacion($equipo->fill(['modelo' => 'Modelo actualizado']));
+        RegistrarAuditoria::guardarActualizacion($other->fill(['modelo' => 'Cambio de otro equipo']));
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->call('cambiarEstado', $equipo->id)
+            ->call('cambiarEstado', $equipo->id)
+            ->call('verEquipo', $equipo->id)
+            ->assertViewHas('movimientosEquipo', fn ($movimientos): bool => $movimientos->pluck('tipo')->all() === ['activacion', 'desactivacion', 'actualizacion', 'devolucion', 'prestamo']
+                && $movimientos->pluck('responsable')->unique()->values()->all() === [$user->name])
+            ->assertSee('Actualización de datos')
+            ->assertSee('Modelo actualizado');
+    }
+
     public function test_pending_loan_prevents_deactivation_and_status_filter_matches_sorting(): void
     {
         $user = User::factory()->create(['activo' => true]);
@@ -274,15 +334,17 @@ class EquiposTableTest extends TestCase
         $user = User::factory()->create(['activo' => false]);
         $this->actingAs($user)->get($url)->assertRedirect(route('login'));
         Livewire::actingAs($user)->test(Index::class)->call('cambiarEstado', 1)->assertForbidden();
+        Livewire::actingAs($user)->test(Index::class)->call('verEquipo', 1)->assertForbidden();
     }
 
-    private function loan(Equipo $equipo): void
+    private function loan(Equipo $equipo): PrestamoDetalle
     {
         $loan = Prestamo::create([
             'departamento_destino_id' => $equipo->departamento_id, 'persona_recibe' => 'Test Recipient',
             'fecha_prestamo' => now(), 'fecha_prevista_devolucion' => now()->addDay(), 'registrado_por' => $equipo->creado_por,
         ]);
-        PrestamoDetalle::create(['prestamo_id' => $loan->id, 'equipo_id' => $equipo->id, 'estado' => 'prestado']);
+
+        return PrestamoDetalle::create(['prestamo_id' => $loan->id, 'equipo_id' => $equipo->id, 'estado' => 'prestado']);
     }
 
     private function login(User $user): void

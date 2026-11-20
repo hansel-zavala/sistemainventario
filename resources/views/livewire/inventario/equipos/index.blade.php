@@ -103,7 +103,8 @@
 
         <!-- Datos de los equipos -->
         @forelse ($equipos as $equipo)
-            <tr wire:key="equipment-{{ $equipo->id }}" class="hover:bg-canvas/60">
+            <tr wire:key="equipment-{{ $equipo->id }}" wire:click="verEquipo({{ $equipo->id }})"
+                class="cursor-pointer hover:bg-canvas/60 focus-within:bg-canvas/60">
                 @foreach (\App\Services\EquiposTable::COLUMNS as $column => $label)
                     @if (in_array($column, $visibleColumns, true))
                         <td wire:key="cell-{{ $equipo->id }}-{{ $column }}" class="px-4 py-3 text-ink">
@@ -127,11 +128,13 @@
                 @endforeach
 
                 <!-- Botones de acción -->
-                <td class="px-4 py-2 text-right">
+                <td class="cursor-default px-4 py-2 text-right">
                     <div class="flex justify-end gap-1">
-                        <button type="button" wire:click="editarEquipo({{ $equipo->id }})" class="icon-button text-blue-600"
+                        <button type="button" id="ver-equipo-{{ $equipo->id }}" wire:click.stop="verEquipo({{ $equipo->id }})"
+                            aria-haspopup="dialog" class="icon-button" title="Ver equipo" aria-label="Ver equipo {{ $equipo->numero_inventario }}"><x-icon name="eye" /></button>
+                        <button type="button" wire:click.stop="editarEquipo({{ $equipo->id }})" class="icon-button text-blue-600"
                             title="Editar equipo" aria-label="Editar equipo {{ $equipo->numero_inventario }}"><x-icon name="edit" /></button>
-                        <button type="button" wire:click="cambiarEstado({{ $equipo->id }})" wire:loading.attr="disabled"
+                        <button type="button" wire:click.stop="cambiarEstado({{ $equipo->id }})" wire:loading.attr="disabled"
                             wire:confirm="¿Desea {{ $equipo->activo ? 'desactivar' : 'reactivar' }} el equipo {{ $equipo->numero_inventario }}?"
                             class="icon-button {{ $equipo->activo ? 'text-red-600' : 'text-green-700' }} disabled:opacity-50"
                             title="{{ $equipo->activo ? 'Desactivar equipo' : 'Reactivar equipo' }}"
@@ -151,6 +154,9 @@
         </x-slot:pagination>
     </x-data-table>
 
+    @if ($equipoDetalle)
+        @include('livewire.inventario.equipos.detalle', ['equipo' => $equipoDetalle, 'movimientos' => $movimientosEquipo])
+    @endif
 
     <!-- Modal de creacion y edicion -->
     @if ($mostrarModal)

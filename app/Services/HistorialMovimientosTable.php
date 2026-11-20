@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Auditoria;
+use App\Models\Equipo;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +93,25 @@ class HistorialMovimientosTable
         });
     }
 
+    public function equipmentTimeline(int $equipoId): Builder
+    {
+        $disponibilidad = DB::query()->fromSub($this->events($equipoId), 'disponibilidad')
+            ->select('fecha', 'tipo', 'responsable_id', 'origen_id', 'fuente');
+
+        $cambios = Auditoria::query()
+            ->where('modelo', Equipo::class)
+            ->where('registro_id', $equipoId)
+            ->whereIn('accion', ['actualizacion', 'activacion', 'desactivacion'])
+            ->selectRaw("created_at as fecha, accion as tipo, usuario_id as responsable_id, id as origen_id, 'auditoria' as fuente");
+
+        return DB::query()->fromSub($disponibilidad->unionAll($cambios->toBase()), 'eventos')
+            ->leftJoin('users as u', 'u.id', '=', 'eventos.responsable_id')
+            ->select('eventos.fecha', 'eventos.tipo', 'eventos.origen_id', 'eventos.fuente', 'u.name as responsable')
+            ->orderByDesc('eventos.fecha')
+            ->orderByDesc('eventos.origen_id')
+            ->orderBy('eventos.fuente');
+    }
+
     private function quantity(string|int|float|null $value): string
     {
         return $value === null ? '' : number_format((float) $value, 2, '.', '');
@@ -105,7 +126,7 @@ class HistorialMovimientosTable
         return 'CONCAT('.implode(', ', $expressions).')';
     }
 
-    private function events(): Builder
+    private function events(?int $equipoId = null): Builder
     {
         $inkLabel = $this->concat("COALESCE(t.nombre, 'Tinta no disponible')", "' - '", "COALESCE(t.color, '')");
         $equipmentCode = "COALESCE(e.numero_inventario, e.numero_serie, e.modelo, 'Sin identificacion')";
@@ -375,6 +396,14 @@ class HistorialMovimientosTable
                 'devoluciones_historicas' AS fuente,
                 {$assetIdentifiers} AS identificadores
             ");
+
+        if ($equipoId !== null) {
+            foreach ([$prestamos, $devoluciones, $devolucionesAntiguas] as $evento) {
+                $evento->where('pd.equipo_id', $equipoId)->whereNull('pd.herramienta_id');
+            }
+
+            return $prestamos->unionAll($devoluciones)->unionAll($devolucionesAntiguas);
+        }
 
         return $inventario
             ->unionAll($prestamos)

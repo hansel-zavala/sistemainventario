@@ -9,13 +9,16 @@ use App\Models\Equipo;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
 use App\Services\EquiposTable;
+use App\Services\HistorialMovimientosTable;
 use App\Services\MovimientosTable;
 use App\Services\RegistrarAuditoria;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -62,6 +65,9 @@ class Index extends Component
     public string $nuevaSiglaDepartamento = '';
 
     public ?int $equipoId = null;
+
+    #[Locked]
+    public ?int $equipoDetalleId = null;
 
     public string $categoriaId = '';
 
@@ -179,8 +185,23 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function verEquipo(int $id): void
+    {
+        abort_unless(Auth::user()?->activo, 403);
+
+        $this->equipoDetalleId = Equipo::query()->findOrFail($id, ['id'])->id;
+        $this->resetPage('movimientosEquipo');
+    }
+
+    public function cerrarDetalle(): void
+    {
+        $this->equipoDetalleId = null;
+        $this->resetPage('movimientosEquipo');
+    }
+
     public function crearEquipo(): void
     {
+        $this->cerrarDetalle();
         $this->resetFormulario();
 
         $this->mostrarModal = true;
@@ -189,6 +210,7 @@ class Index extends Component
     public function editarEquipo(int $id): void
     {
         $equipo = Equipo::findOrFail($id);
+        $this->cerrarDetalle();
 
         $this->equipoId = $equipo->id;
 
@@ -766,7 +788,7 @@ class Index extends Component
         $this->resetPage();
     }
 
-    public function render()
+    public function render(HistorialMovimientosTable $historial): View
     {
         $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
         $dateErrors = Validator::make($dateRange, [
@@ -790,6 +812,17 @@ class Index extends Component
             'marca' => Marca::query()->orderBy('nombre')->get(),
             'departamento' => Departamento::query()->orderBy('nombre')->get(),
         ];
+
+        $equipoDetalle = null;
+        $movimientosEquipo = null;
+        if ($this->equipoDetalleId !== null) {
+            abort_unless(Auth::user()?->activo, 403);
+
+            $equipoDetalle = $table->query([])->with('creador:id,name')->find($this->equipoDetalleId);
+            if ($equipoDetalle !== null) {
+                $movimientosEquipo = $historial->equipmentTimeline($equipoDetalle->id)->paginate(10, pageName: 'movimientosEquipo');
+            }
+        }
 
         $registro = $this->mostrarModal && $this->equipoId !== null
             ? Equipo::find($this->equipoId)
@@ -824,6 +857,8 @@ class Index extends Component
             'livewire.inventario.equipos.index',
             compact(
                 'equipos',
+                'equipoDetalle',
+                'movimientosEquipo',
                 'dateErrors',
                 'filterOptions',
                 'categorias',
