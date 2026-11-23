@@ -1,4 +1,4 @@
-@props(['categoria', 'opciones', 'vincularExistente'])
+@props(['categoria', 'opciones', 'vincularExistente', 'placeholder' => 'Seleccione una opción de equipos existente'])
 
 <div class="space-y-3">
     <p class="text-sm text-gray-700">
@@ -39,7 +39,7 @@
                 @disabled($opciones->isEmpty())
                 class="cursor-pointer w-full rounded-full border border-gray-300 px-4 py-2 disabled:bg-gray-100"
             >
-                <option value="">Seleccione una opción de equipos existente</option>
+                <option value="">{{ $placeholder }}</option>
                 @foreach ($opciones as $opcion)
                     <option wire:key="catalogo-existente-{{ $opcion->id }}" value="{{ $opcion->id }}">
                         {{ $opcion->nombre }}

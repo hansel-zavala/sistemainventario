@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Livewire\Inventario\Herramientas\Index;
 use App\Models\Departamento;
 use App\Models\Herramienta;
+use App\Models\MovimientoInventario;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
+use App\Models\UnidadMedida;
 use App\Models\User;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -34,9 +37,11 @@ class HerramientasTableTest extends TestCase
             ->assertSee('herramientas.visibleColumns', false)->assertSee('Columnas')->assertSee('Exportar')
             ->assertSee(route('inventario.herramientas.exportar'))
             ->assertSee('herramientas-heading-cantidad_actual', false)->assertSee('herramientas-heading-activo', false)
-            ->assertSee('Editar herramienta Drill')->assertSee('Desactivar herramienta Drill')->assertSee('Ver historial de Drill')
+            ->assertSee('Editar herramienta Drill')->assertSee('Desactivar herramienta Drill')->assertSee('Ver herramienta Drill')
             ->call('editarHerramienta', $tool->id)->assertSet('herramientaId', $tool->id)->assertSet('mostrarModal', true)
-            ->call('cerrarModal')->call('abrirHistorial', $tool->id)->assertSet('mostrarHistorial', true);
+            ->call('cerrarModal')->call('verHerramienta', $tool->id)->assertSet('herramientaDetalleId', $tool->id)
+            ->assertSee('Información general')->assertSee('Historial técnico')->assertSee('Esta herramienta aún no tiene movimientos registrados.')
+            ->call('editarHerramienta', $tool->id)->assertSet('herramientaDetalleId', null)->assertSet('mostrarModal', true);
     }
 
     public function test_column_selection_does_not_hide_actions_or_change_availability(): void
@@ -90,9 +95,75 @@ class HerramientasTableTest extends TestCase
         $this->loan($partial, 9, 1);
         $this->loan($borrowed, 1, 0);
 
-        Livewire::actingAs($user)->test(Index::class)->call('sortBy', 'disponibilidad')
+        $component = Livewire::actingAs($user)->test(Index::class)->call('sortBy', 'disponibilidad')
             ->assertViewHas('herramientas', fn ($rows): bool => $rows->pluck('id')->all() === [$borrowed->id, $inactive->id, $partial->id, $free->id])
             ->assertSee('2.50')->assertSee('8.00')->assertSee('Prestada')->assertSee('Inactiva');
+
+        $component->call('verHerramienta', $partial->id)->assertSee('2.5 disponibles')
+            ->assertSee('Cantidad prestada')->assertSee('Cantidad disponible')->assertSee('Stock mínimo')
+            ->call('cerrarDetalle')->call('verHerramienta', $borrowed->id)
+            ->assertViewHas('herramientaDetalle', fn (Herramienta $detalle): bool => $detalle->esta_prestada)
+            ->assertDontSee('Cantidad disponible');
+    }
+
+    public function test_tool_movements_include_stock_availability_and_audited_changes_without_duplicate_returns(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $tool = Herramienta::factory()->create(['creado_por' => $user->id]);
+        $other = Herramienta::factory()->create();
+        foreach (['apertura', 'entrada', 'entrada', 'salida'] as $index => $type) {
+            $movement = MovimientoInventario::create([
+                'tipo' => $type, 'fecha_movimiento' => '2026-01-0'.($index + 1), 'registrado_por' => $user->id,
+            ]);
+            $movement->detalles()->create([
+                'tipo_item' => 'herramienta', 'item_id' => $tool->id, 'cantidad' => 1, 'existencia_anterior' => 1, 'existencia_posterior' => 2,
+            ]);
+            $movement->detalles()->create([
+                'tipo_item' => 'insumo', 'item_id' => $tool->id, 'cantidad' => 1, 'existencia_anterior' => 1, 'existencia_posterior' => 2,
+            ]);
+        }
+
+        $loan = $this->loan($tool, 2, 2);
+        $loan->prestamo->update(['fecha_prestamo' => '2026-01-05']);
+        $returned = ['estado' => 'devuelto', 'fecha_devolucion' => '2026-01-06', 'recibido_por' => $user->id];
+        $loan->update($returned);
+        $loan->devoluciones()->create(['cantidad' => 2, 'fecha_devolucion' => '2026-01-06', 'recibido_por' => $user->id, 'observaciones' => 'Entrega registrada']);
+        $loan->prestamo->detalles()->create([
+            'herramienta_id' => $tool->id, 'cantidad_prestada' => 1, 'cantidad_devuelta' => 1, ...$returned,
+        ]);
+        $this->loan($other, 1, 0);
+
+        $this->actingAs($user);
+        RegistrarAuditoria::guardarActualizacion($tool->fill(['observaciones' => 'Verificación de inventario']));
+        RegistrarAuditoria::guardarActualizacion($tool->fill(['activo' => false, 'observaciones' => 'Baja de inventario']));
+        RegistrarAuditoria::guardarActualizacion($other->fill(['activo' => false]));
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->call('cambiarEstado', $tool->id)
+            ->call('verHerramienta', $tool->id)
+            ->assertViewHas('movimientosHerramienta', fn ($movimientos): bool => $movimientos->total() === 11 && $movimientos->pluck('tipo')->all() === [
+                'activacion', 'desactivacion', 'actualizacion', 'devolucion', 'devolucion', 'prestamo', 'prestamo', 'salida', 'entrada', 'entrada',
+            ])
+            ->assertSee('También se actualizaron datos de la herramienta.')
+            ->assertSee('Entrega registrada')->assertSee('Existencia anterior')->assertSee('Existencia posterior')
+            ->call('nextPage', 'movimientosHerramienta')->assertSet('paginators.page', 1)
+            ->assertViewHas('movimientosHerramienta', fn ($movimientos): bool => $movimientos->pluck('tipo')->all() === ['apertura'])
+            ->call('cerrarDetalle')->call('verHerramienta', $tool->id)->assertSet('paginators.movimientosHerramienta', 1);
+    }
+
+    public function test_quick_unit_creation_selects_the_unit_without_losing_the_tool_form(): void
+    {
+        $component = Livewire::actingAs(User::factory()->create(['activo' => true]))->test(Index::class)
+            ->call('crearHerramienta')->set('nombre', 'Cable de red')->set('tipoControl', 'cantidad')
+            ->call('abrirModalCatalogo', 'unidad_medida')->assertSee('Permite cantidades decimales')
+            ->set('nuevoNombreCatalogo', 'Metro de cable')->set('nuevoNombrePluralUnidad', 'Metros de cable')
+            ->set('nuevaAbreviaturaUnidad', 'm')->set('nuevoPermiteDecimalesUnidad', true)
+            ->call('guardarCatalogoRapido')->assertHasNoErrors()->assertSet('mostrarModalCatalogo', false)
+            ->assertSet('mostrarModal', true)->assertSet('nombre', 'Cable de red')->assertSet('tipoControl', 'cantidad');
+
+        $unit = UnidadMedida::query()->where('nombre_singular', 'Metro de cable')->firstOrFail();
+        $this->assertTrue($unit->permite_decimales);
+        $component->assertSet('unidadMedidaId', (string) $unit->id);
     }
 
     public function test_filters_search_and_clear_preserve_pagination_behavior(): void
@@ -143,14 +214,15 @@ class HerramientasTableTest extends TestCase
             ->call($method, 'unknown')->assertStatus(422);
     }
 
-    private function loan(Herramienta $tool, float $quantity, float $returned): void
+    private function loan(Herramienta $tool, float $quantity, float $returned): PrestamoDetalle
     {
         $department = Departamento::create(['nombre' => 'Department '.$tool->id, 'creado_por' => $tool->creado_por]);
         $loan = Prestamo::create([
             'departamento_destino_id' => $department->id, 'persona_recibe' => 'Test Recipient',
             'fecha_prestamo' => now(), 'fecha_prevista_devolucion' => now()->addDay(), 'registrado_por' => $tool->creado_por,
         ]);
-        PrestamoDetalle::create([
+
+        return PrestamoDetalle::create([
             'prestamo_id' => $loan->id, 'herramienta_id' => $tool->id,
             'cantidad_prestada' => $quantity, 'cantidad_devuelta' => $returned, 'estado' => 'prestado',
         ]);

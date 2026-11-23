@@ -6,19 +6,20 @@ use App\Livewire\Inventario\CatalogosPorCategoria;
 use App\Models\Categoria;
 use App\Models\Herramienta;
 use App\Models\Marca;
-use App\Models\MovimientoInventario;
 use App\Models\PrestamoDetalle;
 use App\Models\UnidadMedida;
 use App\Services\HerramientasTable;
+use App\Services\HistorialMovimientosTable;
 use App\Services\MovimientosTable;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -106,11 +107,8 @@ class Index extends Component
         $this->resetPage();
     }
 
-    public bool $mostrarHistorial = false;
-
-    public ?int $historialHerramientaId = null;
-
-    public string $historialHerramientaNombre = '';
+    #[Locked]
+    public ?int $herramientaDetalleId = null;
 
     public string $buscar = '';
 
@@ -183,6 +181,7 @@ class Index extends Component
 
     public function crearHerramienta(): void
     {
+        $this->cerrarDetalle();
         $this->resetFormulario();
 
         $this->mostrarModal = true;
@@ -191,6 +190,7 @@ class Index extends Component
     public function editarHerramienta(int $id): void
     {
         $herramienta = Herramienta::findOrFail($id);
+        $this->cerrarDetalle();
 
         $this->herramientaId = $herramienta->id;
         $this->nombre = $herramienta->nombre;
@@ -865,27 +865,21 @@ class Index extends Component
         }, 3);
     }
 
-    public function abrirHistorial(int $id): void
+    public function verHerramienta(int $id): void
     {
-        $herramienta = Herramienta::findOrFail($id);
+        abort_unless(Auth::user()?->activo, 403);
 
-        $this->historialHerramientaId = $herramienta->id;
-
-        $this->historialHerramientaNombre = $herramienta->nombre;
-
-        $this->mostrarHistorial = true;
+        $this->herramientaDetalleId = Herramienta::query()->findOrFail($id, ['id'])->id;
+        $this->resetPage('movimientosHerramienta');
     }
 
-    public function cerrarHistorial(): void
+    public function cerrarDetalle(): void
     {
-        $this->mostrarHistorial = false;
-
-        $this->historialHerramientaId = null;
-
-        $this->historialHerramientaNombre = '';
+        $this->herramientaDetalleId = null;
+        $this->resetPage('movimientosHerramienta');
     }
 
-    public function render()
+    public function render(HerramientasTable $table, HistorialMovimientosTable $historial): View
     {
         $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
         $dateErrors = Validator::make($dateRange, [
@@ -894,7 +888,7 @@ class Index extends Component
         ], MovimientosTable::FILTER_MESSAGES)->errors();
         $queryDates = $dateErrors->isEmpty() ? $dateRange : [];
 
-        $herramientas = app(HerramientasTable::class)->query([
+        $herramientas = $table->query([
             ...$queryDates,
             'buscar' => $this->buscar, 'filtroEstado' => $this->filtroEstado,
             'sortColumn' => $this->sortColumn, 'sortDirection' => $this->sortDirection,
@@ -927,177 +921,15 @@ class Index extends Component
             ->orderBy('nombre_singular')
             ->get();
 
-        /*
-|--------------------------------------------------------------------------
-| Historial completo de la herramienta
-|--------------------------------------------------------------------------
-*/
+        $herramientaDetalle = null;
+        $movimientosHerramienta = null;
+        if ($this->herramientaDetalleId !== null) {
+            abort_unless(Auth::user()?->activo, 403);
 
-        $eventosHistorial = collect();
-
-        if (
-            $this->mostrarHistorial
-            && $this->historialHerramientaId !== null
-        ) {
-            $herramientaId = $this->historialHerramientaId;
-
-            /*
-         * 1. Aperturas, Entradas y Salidas.
-        */
-            $movimientos = MovimientoInventario::query()
-                ->with([
-                    'usuario',
-                    'detalles' => function ($query) use ($herramientaId) {
-                        $query
-                            ->where('tipo_item', 'herramienta')
-                            ->where('item_id', $herramientaId);
-                    },
-                ])
-                ->whereIn('tipo', [
-                    'apertura',
-                    'entrada',
-                    'salida',
-                ])
-                ->whereHas('detalles', function ($query) use ($herramientaId) {
-                    $query
-                        ->where('tipo_item', 'herramienta')
-                        ->where('item_id', $herramientaId);
-                })
-                ->orderByDesc('fecha_movimiento')
-                ->limit(100)
-                ->get();
-
-            foreach ($movimientos as $movimiento) {
-                foreach ($movimiento->detalles as $detalle) {
-                    $eventosHistorial->push([
-                        'tipo' => $movimiento->tipo,
-                        'fecha' => $movimiento->fecha_movimiento,
-                        'cantidad' => (float) $detalle->cantidad,
-                        'anterior' => (float) $detalle->existencia_anterior,
-                        'posterior' => (float) $detalle->existencia_posterior,
-                        'responsable' => $movimiento->usuario?->name
-                            ?? 'Usuario no disponible',
-                        'detalle' => $movimiento->observaciones ?? '',
-                        'orden' => $movimiento->id,
-                    ]);
-                }
+            $herramientaDetalle = $table->query([])->with('creador:id,name')->find($this->herramientaDetalleId);
+            if ($herramientaDetalle !== null) {
+                $movimientosHerramienta = $historial->toolTimeline($herramientaDetalle->id);
             }
-
-            /*
-         * 2. Préstamos de esta herramienta.
-         *
-         * Incluye herramientas individuales y por cantidad.
-         */
-            $prestamos = PrestamoDetalle::query()
-                ->with([
-                    'prestamo.departamentoDestino',
-                    'prestamo.usuario',
-                    'devoluciones.usuario',
-                    'usuarioRecibe',
-                ])
-                ->where('herramienta_id', $herramientaId)
-                ->orderByDesc('id')
-                ->limit(100)
-                ->get();
-
-            foreach ($prestamos as $prestamoDetalle) {
-
-                $prestamo = $prestamoDetalle->prestamo;
-
-                if (! $prestamo) {
-                    continue;
-                }
-
-                $departamento = $prestamo->departamentoDestino?->nombre
-                    ?? 'Sin departamento';
-
-                $persona = $prestamo->persona_recibe
-                    ?: 'No especificada';
-
-                /*
-             * Evento del préstamo inicial.
-             */
-                $eventosHistorial->push([
-                    'tipo' => 'prestamo',
-                    'fecha' => $prestamo->fecha_prestamo,
-                    'cantidad' => (float) $prestamoDetalle->cantidad_prestada,
-                    'anterior' => null,
-                    'posterior' => null,
-                    'responsable' => $prestamo->usuario?->name
-                        ?? 'Usuario no disponible',
-                    'detalle' => 'Departamento: '.$departamento
-                        .' | Recibe: '.$persona,
-                    'orden' => $prestamoDetalle->id,
-                ]);
-
-                /*
-             * 3. Cada devolución parcial o completa.
-             */
-                foreach ($prestamoDetalle->devoluciones as $devolucion) {
-
-                    $eventosHistorial->push([
-                        'tipo' => 'devolucion',
-                        'fecha' => $devolucion->fecha_devolucion,
-                        'cantidad' => (float) $devolucion->cantidad,
-                        'anterior' => null,
-                        'posterior' => null,
-                        'responsable' => $devolucion->usuario?->name
-                            ?? 'Usuario no disponible',
-                        'detalle' => 'Devolución del préstamo #'
-                            .$prestamo->id
-                            .(
-                                $devolucion->observaciones
-                                ? ' | '.$devolucion->observaciones
-                                : ''
-                            ),
-                        'orden' => $devolucion->id,
-                    ]);
-                }
-
-                /*
-         * Compatibilidad con devoluciones anteriores
-         * a la creación de prestamo_devoluciones.
-         *
-         * Solo se incorpora este registro cuando
-         * no existen eventos individuales.
-         */
-                if (
-                    $prestamoDetalle->devoluciones->isEmpty()
-                    && $prestamoDetalle->estado === 'devuelto'
-                    && $prestamoDetalle->fecha_devolucion
-                ) {
-                    $eventosHistorial->push([
-                        'tipo' => 'devolucion',
-                        'fecha' => $prestamoDetalle->fecha_devolucion,
-                        'cantidad' => (float) $prestamoDetalle->cantidad_devuelta,
-                        'anterior' => null,
-                        'posterior' => null,
-                        'responsable' => $prestamoDetalle->usuarioRecibe?->name
-                            ?? 'Usuario no disponible',
-                        'detalle' => 'Devolución registrada anteriormente'
-                            .' | Préstamo #'.$prestamo->id,
-                        'orden' => $prestamoDetalle->id,
-                    ]);
-                }
-            }
-
-            /*
-     * Ordenar todas las operaciones por fecha,
-     * de la más reciente a la más antigua.
-     */
-            $eventosHistorial = $eventosHistorial
-                ->sort(function ($a, $b) {
-                    $fechaA = Carbon::parse($a['fecha'])->getTimestamp();
-                    $fechaB = Carbon::parse($b['fecha'])->getTimestamp();
-
-                    if ($fechaA !== $fechaB) {
-                        return $fechaB <=> $fechaA;
-                    }
-
-                    return $b['orden'] <=> $a['orden'];
-                })
-                ->take(50)
-                ->values();
         }
 
         return view(
@@ -1112,7 +944,8 @@ class Index extends Component
                 'opcionesCatalogoExistente',
                 'marcas',
                 'unidades',
-                'eventosHistorial'
+                'herramientaDetalle',
+                'movimientosHerramienta',
             )
         );
     }

@@ -89,17 +89,17 @@
         @apply min-h-12 w-full rounded-lg border border-line bg-surface px-4 py-3 text-sm text-ink;
     }
 
-    .equipment-select {
+    .inventory-catalog-select {
         appearance: none;
     }
 
     @supports (appearance: base-select) and selector(::picker(select)) {
-        .equipment-select,
-        .equipment-select::picker(select) {
+        .inventory-catalog-select,
+        .inventory-catalog-select::picker(select) {
             appearance: base-select;
         }
 
-        .equipment-select::picker(select) {
+        .inventory-catalog-select::picker(select) {
             @apply overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-2 text-sm text-neutral-900 shadow-lg;
             inline-size: anchor-size(inline);
             max-block-size: min(16rem, 45dvh);
@@ -107,20 +107,20 @@
             position-try-order: normal;
         }
 
-        .equipment-select::picker-icon,
-        .equipment-select:required > option[value=""]:not(:only-child) {
+        .inventory-catalog-select::picker-icon,
+        .inventory-catalog-select:required > option[value=""]:not(:only-child) {
             display: none;
         }
 
-        .equipment-select > option {
+        .inventory-catalog-select > option {
             @apply min-h-8 rounded-lg px-7 py-1 whitespace-normal wrap-anywhere;
         }
 
-        .equipment-select > option:is(:hover, :focus-visible, :checked) {
+        .inventory-catalog-select > option:is(:hover, :focus-visible, :checked) {
             @apply bg-neutral-100;
         }
 
-        .equipment-select > option::checkmark {
+        .inventory-catalog-select > option::checkmark {
             order: 1;
             margin-inline-start: auto;
         }

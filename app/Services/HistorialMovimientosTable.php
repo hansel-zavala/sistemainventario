@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Auditoria;
 use App\Models\Equipo;
+use App\Models\Herramienta;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\LazyCollection;
@@ -112,6 +114,41 @@ class HistorialMovimientosTable
             ->orderBy('eventos.fuente');
     }
 
+    /** @return LengthAwarePaginator<int, stdClass> */
+    public function toolTimeline(int $herramientaId): LengthAwarePaginator
+    {
+        $operaciones = DB::query()->fromSub($this->events(herramientaId: $herramientaId), 'operaciones')
+            ->select('fecha', 'tipo', 'responsable_id', 'origen_id', 'fuente', 'cantidad', 'anterior', 'posterior', 'detalle')
+            ->selectRaw('NULL as cambios');
+
+        $auditorias = Auditoria::query()
+            ->where('modelo', Herramienta::class)
+            ->where('registro_id', $herramientaId)
+            ->whereIn('accion', ['actualizacion', 'activacion', 'desactivacion'])
+            ->selectRaw("created_at as fecha, accion as tipo, usuario_id as responsable_id, id as origen_id,
+                'auditoria' as fuente, NULL as cantidad, NULL as anterior, NULL as posterior, '' as detalle, valores_nuevos as cambios");
+
+        return DB::query()->fromSub($operaciones->unionAll($auditorias->toBase()), 'eventos')
+            ->leftJoin('users as u', 'u.id', '=', 'eventos.responsable_id')
+            ->select('eventos.*', 'u.name as responsable')
+            ->orderByDesc('eventos.fecha')
+            ->orderByDesc('eventos.origen_id')
+            ->orderBy('eventos.fuente')
+            ->paginate(10, pageName: 'movimientosHerramienta')
+            ->through(function (stdClass $evento): stdClass {
+                if ($evento->tipo === 'actualizacion') {
+                    $cambios = json_decode($evento->cambios ?? '{}', true);
+                    if (isset($cambios['activo'])) {
+                        $evento->tipo = $cambios['activo'] ? 'activacion' : 'desactivacion';
+                        $evento->detalle = count($cambios) > 1 ? 'También se actualizaron datos de la herramienta.' : '';
+                    }
+                }
+                unset($evento->cambios);
+
+                return $evento;
+            });
+    }
+
     private function quantity(string|int|float|null $value): string
     {
         return $value === null ? '' : number_format((float) $value, 2, '.', '');
@@ -126,7 +163,7 @@ class HistorialMovimientosTable
         return 'CONCAT('.implode(', ', $expressions).')';
     }
 
-    private function events(?int $equipoId = null): Builder
+    private function events(?int $equipoId = null, ?int $herramientaId = null): Builder
     {
         $inkLabel = $this->concat("COALESCE(t.nombre, 'Tinta no disponible')", "' - '", "COALESCE(t.color, '')");
         $equipmentCode = "COALESCE(e.numero_inventario, e.numero_serie, e.modelo, 'Sin identificacion')";
@@ -405,10 +442,18 @@ class HistorialMovimientosTable
             return $prestamos->unionAll($devoluciones)->unionAll($devolucionesAntiguas);
         }
 
-        return $inventario
-            ->unionAll($prestamos)
-            ->unionAll($devoluciones)
-            ->unionAll($recargas)
-            ->unionAll($devolucionesAntiguas);
+        if ($herramientaId !== null) {
+            $inventario->where('d.tipo_item', 'herramienta')->where('d.item_id', $herramientaId);
+            foreach ([$prestamos, $devoluciones, $devolucionesAntiguas] as $evento) {
+                $evento->where('pd.herramienta_id', $herramientaId);
+            }
+        }
+
+        $inventario->unionAll($prestamos)->unionAll($devoluciones);
+        if ($herramientaId === null) {
+            $inventario->unionAll($recargas);
+        }
+
+        return $inventario->unionAll($devolucionesAntiguas);
     }
 }

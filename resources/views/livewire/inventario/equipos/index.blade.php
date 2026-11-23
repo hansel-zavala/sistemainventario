@@ -232,7 +232,7 @@
                                             wire:key="{{ $idControl }}-{{ $dependeDeCategoria ? $categoriaId : 'opciones' }}"
                                             required @disabled($inhabilitado)
                                             @error($campo) aria-invalid="true" aria-describedby="{{ $idControl }}-error" @enderror
-                                            class="{{ $claseControl }} equipment-select cursor-pointer rounded-full pr-9 invalid:text-neutral-500 disabled:cursor-not-allowed">
+                                            class="{{ $claseControl }} inventory-catalog-select cursor-pointer rounded-full pr-9 invalid:text-neutral-500 disabled:cursor-not-allowed">
                                             <option value="">{{ $inhabilitado ? 'Seleccione una categoría activa' : 'Seleccione una opción' }}</option>
 
                                             @foreach ($opciones as $opcion)
