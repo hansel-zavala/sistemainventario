@@ -19,7 +19,7 @@
         <button
             type="button"
             wire:click="nuevaRecarga"
-            class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+            class="rounded-full bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
         >
             + Nueva recarga
         </button>
@@ -70,7 +70,7 @@
             @foreach ($selects as $field => [$label, $options])
                 <label wire:key="recargas-select-{{ $field }}" class="text-sm font-medium text-muted">{{ $label }}
                     <select wire:model.live="{{ $field }}" @if ($filterErrors->has($field)) aria-invalid="true" aria-describedby="recargas-filter-error" @endif
-                        class="mt-1 min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink">
+                        class="mt-1 min-h-11 w-full rounded-full border border-line bg-surface px-3 text-sm text-ink">
                         @if ($field !== 'orden')
                             <option value="">Todos</option>
                         @endif
@@ -351,12 +351,8 @@
                     </div>
 
 
-                    <button
-                        type="button"
-                        wire:click="cerrarModal"
-                        class="text-2xl text-gray-400 hover:text-gray-600"
-                    >
-                        ×
+                    <button type="button" wire:click="cerrarModal" autofocus aria-label="Cerrar"
+                        class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"><x-icon name="close" class="size-4" />
                     </button>
 
                 </div>

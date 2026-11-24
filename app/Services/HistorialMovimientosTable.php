@@ -6,6 +6,7 @@ use App\Models\Auditoria;
 use App\Models\Equipo;
 use App\Models\Herramienta;
 use App\Models\Insumo;
+use App\Models\Tinta;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -16,6 +17,8 @@ use stdClass;
 
 class HistorialMovimientosTable
 {
+    private const EQUIPMENT_CODE = "COALESCE(e.numero_inventario, e.numero_serie, e.modelo, 'Sin identificacion')";
+
     public const TYPES = ['apertura' => 'Apertura', 'entrada' => 'Entrada', 'salida' => 'Salida', 'prestamo' => 'Préstamo', 'devolucion' => 'Devolución', 'recarga' => 'Recarga'];
 
     public const ITEMS = ['equipo' => 'Equipo tecnológico', 'herramienta' => 'Herramienta', 'insumo' => 'Insumo', 'tinta' => 'Tinta'];
@@ -132,10 +135,21 @@ class HistorialMovimientosTable
     }
 
     /** @return LengthAwarePaginator<int, stdClass> */
+    public function inkTimeline(int $tintaId): LengthAwarePaginator
+    {
+        $operaciones = $this->inventoryEvents($this->inkLabel())
+            ->where('d.tipo_item', 'tinta')
+            ->where('d.item_id', $tintaId)
+            ->unionAll($this->refillEvents()->where('rd.tinta_id', $tintaId));
+
+        return $this->stockTimeline($operaciones, Tinta::class, $tintaId, 'movimientosTinta', 'También se actualizaron datos de la tinta.');
+    }
+
+    /** @return LengthAwarePaginator<int, stdClass> */
     private function stockTimeline(Builder $operaciones, string $modelo, int $id, string $pagina, string $detalleActualizacion): LengthAwarePaginator
     {
         $operaciones = DB::query()->fromSub($operaciones, 'operaciones')
-            ->select('fecha', 'tipo', 'responsable_id', 'origen_id', 'fuente', 'cantidad', 'anterior', 'posterior', 'detalle')
+            ->select('fecha', 'tipo', 'responsable_id', 'origen_id', 'fuente', 'cantidad', 'unidad', 'anterior', 'posterior', 'detalle')
             ->selectRaw('NULL as cambios');
 
         $auditorias = Auditoria::query()
@@ -143,7 +157,7 @@ class HistorialMovimientosTable
             ->where('registro_id', $id)
             ->whereIn('accion', ['actualizacion', 'activacion', 'desactivacion'])
             ->selectRaw("created_at as fecha, accion as tipo, usuario_id as responsable_id, id as origen_id,
-                'auditoria' as fuente, NULL as cantidad, NULL as anterior, NULL as posterior, '' as detalle, valores_nuevos as cambios");
+                'auditoria' as fuente, NULL as cantidad, NULL as unidad, NULL as anterior, NULL as posterior, '' as detalle, valores_nuevos as cambios");
 
         return DB::query()->fromSub($operaciones->unionAll($auditorias->toBase()), 'eventos')
             ->leftJoin('users as u', 'u.id', '=', 'eventos.responsable_id')
@@ -243,21 +257,70 @@ class HistorialMovimientosTable
             ");
     }
 
-    private function events(?int $equipoId = null, ?int $herramientaId = null): Builder
+    private function equipmentIdentifiers(): string
+    {
+        return $this->concat("COALESCE(e.numero_inventario, '')", "' '", "COALESCE(e.numero_serie, '')", "' '", "COALESCE(e.modelo, '')");
+    }
+
+    private function refillEvents(): Builder
     {
         $inkLabel = $this->inkLabel();
-        $equipmentCode = "COALESCE(e.numero_inventario, e.numero_serie, e.modelo, 'Sin identificacion')";
-        $equipmentLabel = $this->concat("'Equipo: '", $equipmentCode);
-        $equipmentIdentifiers = $this->concat("COALESCE(e.numero_inventario, '')", "' '", "COALESCE(e.numero_serie, '')", "' '", "COALESCE(e.modelo, '')");
-        $assetIdentifiers = $this->concat("COALESCE(h.codigo_interno, '')", "' '", $equipmentIdentifiers);
+        $equipmentIdentifiers = $this->equipmentIdentifiers();
+        $observations = "TRIM(COALESCE(r.observaciones, ''))";
+        $observationsWithSeparator = $this->concat("' | '", $observations);
+        $refillDescription = $this->concat("'Recarga #'", 'r.id', "' | Impresora: '", self::EQUIPMENT_CODE,
+            "' | Nivel de impresora: '", 'rd.porcentaje_antes', "'% a '", 'rd.porcentaje_despues', "'%'",
+            "CASE WHEN {$observations} = '' THEN '' ELSE {$observationsWithSeparator} END");
+
+        return DB::table(
+            'recarga_tinta_detalles as rd'
+        )
+            ->join(
+                'recargas_tinta as r',
+                'r.id',
+                '=',
+                'rd.recarga_tinta_id'
+            )
+            ->leftJoin(
+                'tintas as t',
+                't.id',
+                '=',
+                'rd.tinta_id'
+            )
+            ->leftJoin(
+                'equipos as e',
+                'e.id',
+                '=',
+                'r.equipo_id'
+            )
+            ->selectRaw("
+                r.created_at AS fecha,
+                'recarga' AS tipo,
+                'tinta' AS tipo_item,
+                rd.tinta_id AS item_id,
+                {$inkLabel} AS articulo,
+                rd.porcentaje_agregado AS cantidad,
+                '% de botella' AS unidad,
+                NULL AS anterior,
+                NULL AS posterior,
+                r.realizado_por AS responsable_id,
+                {$refillDescription} AS detalle,
+                rd.id AS origen_id,
+                'recargas' AS fuente,
+                {$equipmentIdentifiers} AS identificadores
+            ");
+    }
+
+    private function events(?int $equipoId = null, ?int $herramientaId = null): Builder
+    {
+        $equipmentLabel = $this->concat("'Equipo: '", self::EQUIPMENT_CODE);
+        $assetIdentifiers = $this->concat("COALESCE(h.codigo_interno, '')", "' '", $this->equipmentIdentifiers());
         $loanDescription = $this->concat("'Prestamo #'", 'p.id', "' | Departamento: '", "COALESCE(dep.nombre, 'No disponible')",
             "' | Recibe: '", "COALESCE(p.persona_recibe, 'No especificado')");
         $returnDescription = $this->concat("'Devolucion del prestamo #'", 'p.id', "' | '", "COALESCE(dv.observaciones, '')");
-        $refillDescription = $this->concat("'Recarga #'", 'r.id', "' | Impresora: '", $equipmentCode,
-            "' | Nivel de impresora: '", 'rd.porcentaje_antes', "'% a '", 'rd.porcentaje_despues', "'% | '", "COALESCE(r.observaciones, '')");
         $legacyDescription = $this->concat("'Devolucion historica del prestamo #'", 'p.id');
 
-        $inventario = $this->inventoryEvents($inkLabel);
+        $inventario = $this->inventoryEvents($this->inkLabel());
 
         // 2. Préstamos de herramientas y equipos.
         $prestamos = DB::table('prestamo_detalles as pd')
@@ -358,47 +421,8 @@ class HistorialMovimientosTable
                 {$assetIdentifiers} AS identificadores
             ");
 
-        // 4. Recargas de tinta.
-        $recargas = DB::table(
-            'recarga_tinta_detalles as rd'
-        )
-            ->join(
-                'recargas_tinta as r',
-                'r.id',
-                '=',
-                'rd.recarga_tinta_id'
-            )
-            ->leftJoin(
-                'tintas as t',
-                't.id',
-                '=',
-                'rd.tinta_id'
-            )
-            ->leftJoin(
-                'equipos as e',
-                'e.id',
-                '=',
-                'r.equipo_id'
-            )
-            ->selectRaw("
-                r.created_at AS fecha,
-                'recarga' AS tipo,
-                'tinta' AS tipo_item,
-                rd.tinta_id AS item_id,
-                {$inkLabel} AS articulo,
-                rd.porcentaje_agregado AS cantidad,
-                '% de botella' AS unidad,
-                NULL AS anterior,
-                NULL AS posterior,
-                r.realizado_por AS responsable_id,
-                {$refillDescription} AS detalle,
-                rd.id AS origen_id,
-                'recargas' AS fuente,
-                {$equipmentIdentifiers} AS identificadores
-            ");
-
         /*
-         * 5. Devoluciones antiguas.
+         * Devoluciones antiguas.
          * Estas se registraron antes de crear
          * la tabla de eventos de devolución.
          */
@@ -475,7 +499,7 @@ class HistorialMovimientosTable
 
         $inventario->unionAll($prestamos)->unionAll($devoluciones);
         if ($herramientaId === null) {
-            $inventario->unionAll($recargas);
+            $inventario->unionAll($this->refillEvents());
         }
 
         return $inventario->unionAll($devolucionesAntiguas);

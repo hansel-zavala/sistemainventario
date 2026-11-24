@@ -3,19 +3,20 @@
 namespace App\Livewire\Inventario\Tintas;
 
 use App\Models\Marca;
-use App\Models\MovimientoInventarioDetalle;
-use App\Models\RecargaTintaDetalle;
 use App\Models\Tinta;
+use App\Services\HistorialMovimientosTable;
 use App\Services\MovimientosTable;
 use App\Services\RegistrarAperturaInventario;
 use App\Services\RegistrarAuditoria;
 use App\Services\TintasTable;
-use Illuminate\Support\Carbon;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -102,11 +103,8 @@ class Index extends Component
         $this->resetPage();
     }
 
-    public bool $mostrarHistorial = false;
-
-    public ?int $historialTintaId = null;
-
-    public string $historialTintaNombre = '';
+    #[Locked]
+    public ?int $tintaDetalleId = null;
 
     public string $buscar = '';
 
@@ -115,6 +113,10 @@ class Index extends Component
     public string $filtroEstado = '';
 
     public bool $mostrarModal = false;
+
+    public bool $mostrarModalCatalogo = false;
+
+    public string $nuevoNombreCatalogo = '';
 
     public ?int $tintaId = null;
 
@@ -153,6 +155,7 @@ class Index extends Component
 
     public function crearTinta(): void
     {
+        $this->cerrarDetalle();
         $this->resetFormulario();
 
         $this->mostrarModal = true;
@@ -161,6 +164,7 @@ class Index extends Component
     public function editarTinta(int $id): void
     {
         $tinta = Tinta::findOrFail($id);
+        $this->cerrarDetalle();
 
         $this->tintaId = $tinta->id;
         $this->nombre = $tinta->nombre;
@@ -197,10 +201,56 @@ class Index extends Component
     public function cerrarModal(): void
     {
         $this->mostrarModal = false;
+        $this->cerrarModalCatalogo();
 
         $this->resetValidation();
 
         $this->resetFormulario();
+    }
+
+    public function abrirModalCatalogo(): void
+    {
+        abort_unless(Auth::user()?->activo && $this->mostrarModal, 403);
+
+        $this->reset('nuevoNombreCatalogo');
+        $this->resetValidation('nuevoNombreCatalogo');
+        $this->mostrarModalCatalogo = true;
+    }
+
+    public function cerrarModalCatalogo(): void
+    {
+        $this->reset('mostrarModalCatalogo', 'nuevoNombreCatalogo');
+        $this->resetValidation('nuevoNombreCatalogo');
+    }
+
+    public function guardarCatalogoRapido(): void
+    {
+        abort_unless(Auth::user()?->activo && $this->mostrarModal && $this->mostrarModalCatalogo, 403);
+
+        $this->nuevoNombreCatalogo = trim($this->nuevoNombreCatalogo);
+        $this->validate(['nuevoNombreCatalogo' => ['required', 'string', 'max:100']], [], ['nuevoNombreCatalogo' => 'nombre de la marca']);
+        $nombre = $this->nuevoNombreCatalogo;
+        $mensajeDuplicado = 'Ya existe una marca con este nombre.';
+
+        try {
+            $marca = DB::transaction(function () use ($nombre, $mensajeDuplicado): Marca {
+                if (Marca::query()->whereRaw('LOWER(TRIM(nombre)) = ?', [mb_strtolower($nombre)])->exists()) {
+                    throw ValidationException::withMessages(['nuevoNombreCatalogo' => $mensajeDuplicado]);
+                }
+
+                $marca = Marca::create(['nombre' => $nombre, 'activo' => true, 'creado_por' => Auth::id()]);
+                RegistrarAuditoria::creacion($marca, ['nombre', 'activo']);
+
+                return $marca;
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['nuevoNombreCatalogo' => $mensajeDuplicado]);
+        }
+
+        $this->marcaId = (string) $marca->id;
+        $this->resetValidation('marcaId');
+        $this->cerrarModalCatalogo();
+        session()->flash('mensajeCatalogo', 'Marca creada y seleccionada correctamente.');
     }
 
     private function resetFormulario(): void
@@ -521,28 +571,21 @@ class Index extends Component
         );
     }
 
-    public function abrirHistorial(int $id): void
+    public function verTinta(int $id): void
     {
-        $tinta = Tinta::findOrFail($id);
+        abort_unless(Auth::user()?->activo, 403);
 
-        $this->historialTintaId = $tinta->id;
-
-        $this->historialTintaNombre =
-            $tinta->nombre.' — '.$tinta->color;
-
-        $this->mostrarHistorial = true;
+        $this->tintaDetalleId = Tinta::query()->findOrFail($id, ['id'])->id;
+        $this->resetPage('movimientosTinta');
     }
 
-    public function cerrarHistorial(): void
+    public function cerrarDetalle(): void
     {
-        $this->mostrarHistorial = false;
-
-        $this->historialTintaId = null;
-
-        $this->historialTintaNombre = '';
+        $this->tintaDetalleId = null;
+        $this->resetPage('movimientosTinta');
     }
 
-    public function render()
+    public function render(TintasTable $table, HistorialMovimientosTable $historial): View
     {
         $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
         $dateErrors = Validator::make($dateRange, [
@@ -551,7 +594,7 @@ class Index extends Component
         ], MovimientosTable::FILTER_MESSAGES)->errors();
         $queryDates = $dateErrors->isEmpty() ? $dateRange : [];
 
-        $tintas = app(TintasTable::class)->query([
+        $tintas = $table->query([
             ...$queryDates,
             'buscar' => $this->buscar,
             'filtroColor' => $this->filtroColor,
@@ -560,10 +603,16 @@ class Index extends Component
             'sortDirection' => $this->sortDirection,
         ])->when($dateErrors->isNotEmpty(), fn ($query) => $query->whereRaw('1 = 0'))->paginate(10);
 
-        $marcas = Marca::query()
-            ->where('activo', true)
-            ->orderBy('nombre')
-            ->get();
+        $registro = $this->mostrarModal && $this->tintaId !== null
+            ? Tinta::query()->find($this->tintaId, ['id', 'color', 'marca_id'])
+            : null;
+        $marcas = $this->mostrarModal
+            ? Marca::query()
+                ->where(fn ($query) => $query->where('activo', true)
+                    ->when($registro?->marca_id !== null, fn ($query) => $query->orWhere('id', $registro->marca_id)))
+                ->orderBy('nombre')
+                ->get()
+            : collect();
 
         $colores = Tinta::query()
             ->select('color')
@@ -571,170 +620,18 @@ class Index extends Component
             ->orderBy('color')
             ->pluck('color');
 
-        /* Historial completo de tinta */
+        $tintaDetalle = null;
+        $movimientosTinta = null;
+        if ($this->tintaDetalleId !== null) {
+            abort_unless(Auth::user()?->activo, 403);
 
-        $eventosHistorial = collect();
-
-        if (
-            $this->mostrarHistorial
-            && $this->historialTintaId !== null
-        ) {
-            $tintaId = $this->historialTintaId;
-
-            /* Aperturas, Entradas y Salidas */
-
-            $movimientos = MovimientoInventarioDetalle::query()
-                ->with([
-                    'movimiento.usuario',
-                ])
-                ->where('tipo_item', 'tinta')
-                ->where('item_id', $tintaId)
-                ->whereHas('movimiento', function ($query) {
-                    $query->whereIn('tipo', [
-                        'apertura',
-                        'entrada',
-                        'salida',
-                    ]);
-                })
-                ->orderByDesc('id')
-                ->limit(100)
-                ->get();
-
-            foreach ($movimientos as $detalle) {
-
-                $movimiento = $detalle->movimiento;
-
-                if (! $movimiento) {
-                    continue;
-                }
-
-                $eventosHistorial->push([
-                    'tipo' => $movimiento->tipo,
-                    'fecha' => $movimiento->fecha_movimiento,
-
-                    'cantidad' => (float) $detalle->cantidad,
-                    'unidad' => 'botellas',
-
-                    'anterior' => (float) $detalle->existencia_anterior,
-                    'posterior' => (float) $detalle->existencia_posterior,
-
-                    'responsable' => $movimiento->usuario?->name
-                        ?? 'Usuario no disponible',
-
-                    'detalle' => $movimiento->observaciones ?? '',
-
-                    'orden_tipo' => 1,
-                    'orden_id' => $detalle->id,
-                ]);
+            $tintaDetalle = $table->query([])->with('creador:id,name')->find($this->tintaDetalleId);
+            if ($tintaDetalle !== null) {
+                $movimientosTinta = $historial->inkTimeline($tintaDetalle->id);
             }
-
-            /* Recargas de impresoras */
-
-            $recargas = RecargaTintaDetalle::query()
-                ->with([
-                    'recarga.usuario',
-                    'recarga.equipo',
-                ])
-                ->where('tinta_id', $tintaId)
-                ->orderByDesc('id')
-                ->limit(100)
-                ->get();
-
-            foreach ($recargas as $detalleRecarga) {
-
-                $recarga = $detalleRecarga->recarga;
-
-                if (! $recarga) {
-                    continue;
-                }
-
-                $equipo = $recarga->equipo;
-
-                $identificacionEquipo = $equipo
-                    ? (
-                        $equipo->numero_inventario
-                        ?: ($equipo->numero_serie ?: (
-                            $equipo->modelo ?: 'Sin identificación'
-                        ))
-                    )
-                    : 'Equipo no disponible';
-
-                $nivelAntes = (float) $detalleRecarga->porcentaje_antes;
-
-                $nivelDespues = (float) $detalleRecarga->porcentaje_despues;
-
-                $observaciones = trim(
-                    (string) ($recarga->observaciones ?? '')
-                );
-
-                $descripcion = 'Impresora: '
-                    .$identificacionEquipo
-                    .' | Nivel antes: '
-                    .number_format($nivelAntes, 2, '.', '')
-                    .'% | Nivel después: '
-                    .number_format($nivelDespues, 2, '.', '')
-                    .'%';
-
-                if ($observaciones !== '') {
-                    $descripcion .= ' | '.$observaciones;
-                }
-
-                $eventosHistorial->push([
-                    'tipo' => 'recarga',
-
-                    'fecha' => $recarga->created_at,
-
-                    'cantidad' => (float) $detalleRecarga->porcentaje_agregado,
-
-                    'unidad' => '% de una botella',
-
-                    // Estos campos corresponden al inventario.
-                    // El detalle de recarga no almacena los saldos
-                    // anteriores y posteriores del almacén.
-                    'anterior' => null,
-                    'posterior' => null,
-
-                    'responsable' => $recarga->usuario?->name
-                        ?? 'Usuario no disponible',
-
-                    'detalle' => $descripcion,
-
-                    'orden_tipo' => 2,
-                    'orden_id' => $detalleRecarga->id,
-                ]);
-            }
-
-            /* Unificar y ordenar todos los eventos */
-
-            $eventosHistorial = $eventosHistorial
-                ->sort(function ($a, $b) {
-
-                    $fechaA = Carbon::parse(
-                        $a['fecha']
-                    )->getTimestamp();
-
-                    $fechaB = Carbon::parse(
-                        $b['fecha']
-                    )->getTimestamp();
-
-                    if ($fechaA !== $fechaB) {
-                        return $fechaB <=> $fechaA;
-                    }
-
-                    if ($a['orden_tipo'] !== $b['orden_tipo']) {
-                        return $b['orden_tipo'] <=> $a['orden_tipo'];
-                    }
-
-                    return $b['orden_id'] <=> $a['orden_id'];
-                })
-                ->take(50)
-                ->values();
         }
 
-        $savedColor = $this->mostrarModal && $this->tintaId !== null
-            ? Tinta::query()->whereKey($this->tintaId)->value('color')
-            : null;
-        $colorOptions = $this->colorOptions($savedColor);
+        $colorOptions = $this->colorOptions($registro?->color);
 
         return view(
             'livewire.inventario.tintas.index',
@@ -744,7 +641,8 @@ class Index extends Component
                 'marcas',
                 'colores',
                 'colorOptions',
-                'eventosHistorial'
+                'tintaDetalle',
+                'movimientosTinta',
             )
         );
     }

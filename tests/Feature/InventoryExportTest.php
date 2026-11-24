@@ -20,10 +20,12 @@ use App\Models\Insumo;
 use App\Models\Marca;
 use App\Models\Prestamo;
 use App\Models\PrestamoDetalle;
+use App\Models\RecargaTinta;
 use App\Models\Tinta;
 use App\Models\TipoEquipo;
 use App\Models\UnidadMedida;
 use App\Models\User;
+use App\Services\RegistrarAperturaInventario;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
@@ -496,6 +498,55 @@ class InventoryExportTest extends TestCase
             ->assertSee('wire:click="previousPage" disabled', false)->assertSee('wire:click="nextPage" disabled', false)
             ->call('clearFilters')->assertDontSee('tintas-filter-chip-', false)
             ->assertSee('Mostrando 10 de 12 tintas encontradas');
+    }
+
+    public function test_quick_ink_brand_creation_preserves_the_draft_and_selects_the_brand(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $component = Livewire::actingAs($user)->test(TintasIndex::class)
+            ->call('crearTinta')->set('nombre', 'Referencia 544')->set('color', 'Cian')
+            ->set('botellasCompletas', '2')->call('abrirModalCatalogo')
+            ->set('nuevoNombreCatalogo', '  Marca de tinta  ')->call('guardarCatalogoRapido')
+            ->assertHasNoErrors()->assertSet('mostrarModalCatalogo', false)->assertSet('mostrarModal', true)
+            ->assertSet('nombre', 'Referencia 544')->assertSet('color', 'Cian')->assertSet('botellasCompletas', '2');
+
+        $brand = Marca::query()->where('nombre', 'Marca de tinta')->sole();
+        $this->assertDatabaseHas('auditorias', ['modelo' => Marca::class, 'registro_id' => $brand->id, 'accion' => 'creacion', 'usuario_id' => $user->id]);
+
+        $component->assertSet('marcaId', (string) $brand->id)
+            ->call('abrirModalCatalogo')->set('nuevoNombreCatalogo', 'MARCA DE TINTA')
+            ->call('guardarCatalogoRapido')->assertHasErrors('nuevoNombreCatalogo')
+            ->call('cerrarModalCatalogo')->assertSet('marcaId', (string) $brand->id)
+            ->call('guardarTinta')->assertHasNoErrors();
+
+        $this->assertDatabaseHas('tintas', ['nombre' => 'Referencia 544', 'color' => 'Cian', 'marca_id' => $brand->id, 'botellas_completas' => 2]);
+    }
+
+    public function test_ink_detail_shows_stock_and_its_own_refills_and_status_changes(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $ink = Tinta::factory()->create([
+            'presentacion' => 'Botella 65 ml', 'porcentaje_botella_abierta' => 25, 'stock_minimo_botellas' => 3,
+            'observaciones' => 'Tinta de almacén', 'creado_por' => $user->id,
+        ]);
+        $otherInk = Tinta::factory()->create();
+        $printer = Equipo::factory()->create(['numero_inventario' => 'IMP-42']);
+        $component = Livewire::actingAs($user)->test(TintasIndex::class);
+        RegistrarAperturaInventario::registrar('tinta', $ink->id, 2.25);
+
+        $refill = RecargaTinta::create(['equipo_id' => $printer->id, 'realizado_por' => $user->id, 'observaciones' => 'Recarga de la tinta seleccionada']);
+        $refill->detalles()->create(['tinta_id' => $ink->id, 'porcentaje_antes' => 10, 'porcentaje_agregado' => 20, 'porcentaje_despues' => 30]);
+        $otherRefill = RecargaTinta::create(['equipo_id' => $printer->id, 'realizado_por' => $user->id, 'observaciones' => 'Recarga de otro registro']);
+        $otherRefill->detalles()->create(['tinta_id' => $otherInk->id, 'porcentaje_antes' => 20, 'porcentaje_agregado' => 15, 'porcentaje_despues' => 35]);
+
+        $component->assertSee('ver-tinta-'.$ink->id, false)->call('cambiarEstado', $ink->id)->call('verTinta', $ink->id)
+            ->assertSee('Información general')->assertSee('Movimientos')->assertDontSee('Historial técnico')
+            ->assertSee('Tinta de almacén')->assertSee('2.25 botellas')->assertSee('Stock bajo')
+            ->assertSee('Apertura')->assertSee('Impresora: IMP-42')->assertSee('20 % de botella')
+            ->assertSee('Recarga de la tinta seleccionada')->assertSee('Desactivación')
+            ->assertDontSee('Recarga de otro registro')
+            ->call('editarTinta', $ink->id)->assertSet('tintaDetalleId', null)
+            ->assertSet('mostrarModal', true)->assertSet('tintaId', $ink->id);
     }
 
     public function test_ink_table_sorts_fractional_stock_and_keeps_export_columns_in_sync(): void

@@ -1,4 +1,4 @@
-@props(['movimientos', 'id', 'emptyMessage', 'paginationLabel'])
+@props(['movimientos', 'id', 'emptyMessage', 'paginationLabel', 'showUnit' => false])
 
 @php
     $formatearCantidad = fn ($cantidad) => rtrim(rtrim(number_format((float) $cantidad, 2, '.', ''), '0'), '.');
@@ -33,7 +33,7 @@
                             @if ($cantidad !== null)
                                 <div class="flex gap-1">
                                     <dt class="text-muted">{{ $etiqueta }}</dt>
-                                    <dd class="font-medium">{{ $formatearCantidad($cantidad) }}</dd>
+                                    <dd class="font-medium">{{ $formatearCantidad($cantidad) }}{{ $showUnit ? ' '.$movimiento->unidad : '' }}</dd>
                                 </div>
                             @endif
                         @endforeach
