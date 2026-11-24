@@ -322,6 +322,6 @@
     @endif
 
     @if ($mostrarModalCatalogo)
-        @include('livewire.inventario.herramientas.catalogo-rapido')
+        @include('livewire.inventario.catalogo-rapido', ['prefijo' => 'herramienta', 'ejemploCategoria' => 'Ej. Manuales, Eléctricas', 'ejemploMarca' => 'Ej. Stanley, Bosch'])
     @endif
 </div>

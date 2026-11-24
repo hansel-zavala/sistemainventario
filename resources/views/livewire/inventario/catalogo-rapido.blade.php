@@ -11,16 +11,16 @@
         ['nuevoNombrePluralUnidad', 'Nombre en plural', 'Ej. Piezas, Metros, Litros', true],
         ['nuevaAbreviaturaUnidad', 'Abreviatura', 'Ej. pza, m, l', false],
     ] : [
-        ['nuevoNombreCatalogo', 'Nombre', $tipoCatalogo === 'categoria' ? 'Ej. Manuales, Eléctricas' : 'Ej. Stanley, Bosch', true],
+        ['nuevoNombreCatalogo', 'Nombre', $tipoCatalogo === 'categoria' ? $ejemploCategoria : $ejemploMarca, true],
     ];
 @endphp
 
-<dialog wire:key="modal-catalogo-herramienta" wire:ignore.self x-data x-init="$el.showModal()"
-    x-on:cancel.prevent="$wire.cerrarModalCatalogo()" aria-labelledby="titulo-modal-catalogo-herramienta"
+<dialog wire:key="modal-catalogo-{{ $prefijo }}" wire:ignore.self x-data x-init="$el.showModal()"
+    x-on:cancel.prevent="$wire.cerrarModalCatalogo()" aria-labelledby="titulo-modal-catalogo-{{ $prefijo }}"
     class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/50">
     <header class="mb-4 flex items-center justify-between gap-3">
         <div>
-            <h3 id="titulo-modal-catalogo-herramienta" class="text-lg font-bold text-gray-800">{{ $titulo }}</h3>
+            <h3 id="titulo-modal-catalogo-{{ $prefijo }}" class="text-lg font-bold text-gray-800">{{ $titulo }}</h3>
             @unless ($catalogoVinculable)
                 <p class="text-xs text-gray-500">{{ $esUnidad ? 'Indica los nombres y si la unidad admite cantidades decimales.' : 'Ingrese el nombre para registrarlo rápidamente.' }}</p>
             @endunless
@@ -39,7 +39,7 @@
 
         @unless ($catalogoVinculable && $vincularExistente)
             @foreach ($campos as [$campo, $etiqueta, $ejemplo, $obligatorio])
-                @php($idControl = 'herramienta-catalogo-rapido-'.$campo)
+                @php($idControl = $prefijo.'-catalogo-rapido-'.$campo)
                 <div wire:key="campo-{{ $idControl }}">
                     <label for="{{ $idControl }}" class="mb-1 block text-sm font-medium text-gray-700">
                         {{ $etiqueta }} @if ($obligatorio) <span aria-hidden="true" class="text-red-600">*</span> @endif
@@ -52,8 +52,8 @@
             @endforeach
 
             @if ($esUnidad)
-                <label for="herramienta-catalogo-rapido-decimales" class="flex items-center gap-2 text-sm text-gray-700">
-                    <input id="herramienta-catalogo-rapido-decimales" type="checkbox" wire:model="nuevoPermiteDecimalesUnidad" class="size-4 accent-blue-600">
+                <label for="{{ $prefijo }}-catalogo-rapido-decimales" class="flex items-center gap-2 text-sm text-gray-700">
+                    <input id="{{ $prefijo }}-catalogo-rapido-decimales" type="checkbox" wire:model="nuevoPermiteDecimalesUnidad" class="size-4 accent-blue-600">
                     Permite cantidades decimales
                 </label>
             @endif

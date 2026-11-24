@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Livewire\Inventario\Insumos\Index;
 use App\Models\Insumo;
 use App\Models\Marca;
+use App\Models\MovimientoInventario;
+use App\Models\UnidadMedida;
 use App\Models\User;
+use App\Services\RegistrarAuditoria;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -26,15 +29,64 @@ class InsumosTableTest extends TestCase
 
     public function test_table_preserves_columns_and_accessible_actions(): void
     {
-        $item = Insumo::factory()->create(['nombre' => 'Cable']);
+        $item = Insumo::factory()->create(['nombre' => 'Cable', 'observaciones' => 'Reservado para la instalación de red.']);
 
         Livewire::actingAs(User::factory()->create(['activo' => true]))->test(Index::class)
             ->assertSee('insumos.visibleColumns', false)->assertSee('Columnas')->assertSee('Exportar')
             ->assertSee(route('inventario.insumos.exportar'))
             ->assertSee('insumos-heading-stock_minimo', false)->assertSee('insumos-heading-marca', false)
-            ->assertSee('Editar insumo Cable')->assertSee('Desactivar insumo Cable')->assertSee('Ver historial de Cable')
+            ->assertSee('Editar insumo Cable')->assertSee('Desactivar insumo Cable')->assertSee('Ver insumo Cable')
             ->call('editarInsumo', $item->id)->assertSet('insumoId', $item->id)->assertSet('mostrarModal', true)
-            ->call('cerrarModal')->call('abrirHistorial', $item->id)->assertSet('mostrarHistorial', true);
+            ->call('cerrarModal')->call('verInsumo', $item->id)->assertSet('insumoDetalleId', $item->id)
+            ->assertSee('Información general')->assertSee('Reservado para la instalación de red.')
+            ->assertSee('Este insumo aún no tiene movimientos registrados.')
+            ->call('editarInsumo', $item->id)->assertSet('insumoDetalleId', null)->assertSet('mostrarModal', true);
+    }
+
+    public function test_supply_movements_paginate_stock_and_audit_history_only_for_the_selected_supply(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $item = Insumo::factory()->create();
+        $other = Insumo::factory()->create();
+
+        foreach (['apertura', ...array_fill(0, 5, 'entrada'), 'salida', 'salida'] as $index => $tipo) {
+            $movement = MovimientoInventario::create([
+                'tipo' => $tipo, 'fecha_movimiento' => '2026-01-0'.($index + 1), 'registrado_por' => $user->id,
+            ]);
+            $movement->detalles()->create(['tipo_item' => 'insumo', 'item_id' => $item->id, 'cantidad' => 1.5, 'existencia_anterior' => 2, 'existencia_posterior' => 3.5]);
+            $movement->detalles()->create(['tipo_item' => 'herramienta', 'item_id' => $item->id, 'cantidad' => 99, 'existencia_anterior' => 1, 'existencia_posterior' => 100]);
+        }
+
+        $this->actingAs($user);
+        RegistrarAuditoria::guardarActualizacion($item->fill(['observaciones' => 'Verificación de inventario']));
+        RegistrarAuditoria::guardarActualizacion($item->fill(['activo' => false, 'observaciones' => 'Baja de inventario']));
+        RegistrarAuditoria::guardarActualizacion($other->fill(['activo' => false]));
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->call('cambiarEstado', $item->id)
+            ->call('verInsumo', $item->id)
+            ->assertViewHas('movimientosInsumo', fn ($movimientos): bool => $movimientos->total() === 11 && $movimientos->pluck('tipo')->take(5)->all() === [
+                'activacion', 'desactivacion', 'actualizacion', 'salida', 'salida',
+            ])
+            ->assertSee('También se actualizaron datos del insumo.')
+            ->assertSee('Existencia anterior')->assertSee('Existencia posterior')
+            ->call('nextPage', 'movimientosInsumo')->assertSet('paginators.page', 1)
+            ->assertViewHas('movimientosInsumo', fn ($movimientos): bool => $movimientos->pluck('tipo')->all() === ['apertura']);
+    }
+
+    public function test_quick_unit_creation_preserves_the_supply_and_selects_the_new_unit(): void
+    {
+        $component = Livewire::actingAs(User::factory()->create(['activo' => true]))->test(Index::class)
+            ->call('crearInsumo')->set('nombre', 'Cable de red')->set('cantidadActual', '2.5')
+            ->call('abrirModalCatalogo', 'unidad_medida')->assertSee('Permite cantidades decimales')
+            ->set('nuevoNombreCatalogo', 'Metro de cable')->set('nuevoNombrePluralUnidad', 'Metros de cable')
+            ->set('nuevaAbreviaturaUnidad', 'm')->set('nuevoPermiteDecimalesUnidad', true)
+            ->call('guardarCatalogoRapido')->assertHasNoErrors()->assertSet('mostrarModalCatalogo', false)
+            ->assertSet('mostrarModal', true)->assertSet('nombre', 'Cable de red')->assertSet('cantidadActual', '2.5');
+
+        $unit = UnidadMedida::query()->where('nombre_singular', 'Metro de cable')->firstOrFail();
+        $this->assertTrue($unit->permite_decimales);
+        $component->assertSet('unidadMedidaId', (string) $unit->id);
     }
 
     public function test_columns_can_be_hidden_without_hiding_actions_or_the_last_column(): void

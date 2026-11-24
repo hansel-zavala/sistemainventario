@@ -40,7 +40,7 @@ class HerramientasTableTest extends TestCase
             ->assertSee('Editar herramienta Drill')->assertSee('Desactivar herramienta Drill')->assertSee('Ver herramienta Drill')
             ->call('editarHerramienta', $tool->id)->assertSet('herramientaId', $tool->id)->assertSet('mostrarModal', true)
             ->call('cerrarModal')->call('verHerramienta', $tool->id)->assertSet('herramientaDetalleId', $tool->id)
-            ->assertSee('Información general')->assertSee('Historial técnico')->assertSee('Esta herramienta aún no tiene movimientos registrados.')
+            ->assertSee('Información general')->assertDontSee('Historial técnico')->assertSee('Esta herramienta aún no tiene movimientos registrados.')
             ->call('editarHerramienta', $tool->id)->assertSet('herramientaDetalleId', null)->assertSet('mostrarModal', true);
     }
 

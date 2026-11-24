@@ -49,7 +49,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ $title ?? $currentPage }} | Sistema de Inventario</title>
-    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.png') }}">
+    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.webp') }}">
     <script>
         try {
             document.documentElement.dataset.sidebarCompact = localStorage.getItem('inventory.sidebar.{{ auth()->id() }}.compact') === 'true' ? 'true' : 'false';

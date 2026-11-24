@@ -6,8 +6,8 @@ use App\Livewire\Inventario\CatalogosPorCategoria;
 use App\Models\Categoria;
 use App\Models\Insumo;
 use App\Models\Marca;
-use App\Models\MovimientoInventario;
 use App\Models\UnidadMedida;
+use App\Services\HistorialMovimientosTable;
 use App\Services\InsumosTable;
 use App\Services\MovimientosTable;
 use App\Services\RegistrarAperturaInventario;
@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -102,11 +104,8 @@ class Index extends Component
         $this->resetPage();
     }
 
-    public bool $mostrarHistorial = false;
-
-    public ?int $historialInsumoId = null;
-
-    public string $historialInsumoNombre = '';
+    #[Locked]
+    public ?int $insumoDetalleId = null;
 
     public string $buscar = '';
 
@@ -156,6 +155,7 @@ class Index extends Component
 
     public function crearInsumo(): void
     {
+        $this->cerrarDetalle();
         $this->resetFormulario();
 
         $this->mostrarModal = true;
@@ -164,6 +164,7 @@ class Index extends Component
     public function editarInsumo(int $id): void
     {
         $insumo = Insumo::findOrFail($id);
+        $this->cerrarDetalle();
 
         $this->insumoId = $insumo->id;
         $this->nombre = $insumo->nombre;
@@ -735,24 +736,21 @@ class Index extends Component
         );
     }
 
-    public function abrirHistorial(int $id): void
+    public function verInsumo(int $id): void
     {
-        $insumo = Insumo::findOrFail($id);
+        abort_unless(Auth::user()?->activo, 403);
 
-        $this->historialInsumoId = $insumo->id;
-        $this->historialInsumoNombre = $insumo->nombre;
-
-        $this->mostrarHistorial = true;
+        $this->insumoDetalleId = Insumo::query()->findOrFail($id, ['id'])->id;
+        $this->resetPage('movimientosInsumo');
     }
 
-    public function cerrarHistorial(): void
+    public function cerrarDetalle(): void
     {
-        $this->mostrarHistorial = false;
-        $this->historialInsumoId = null;
-        $this->historialInsumoNombre = '';
+        $this->insumoDetalleId = null;
+        $this->resetPage('movimientosInsumo');
     }
 
-    public function render()
+    public function render(InsumosTable $table, HistorialMovimientosTable $historial): View
     {
         $dateRange = ['desde' => $this->desde, 'hasta' => $this->hasta];
         $dateErrors = Validator::make($dateRange, [
@@ -761,7 +759,7 @@ class Index extends Component
         ], MovimientosTable::FILTER_MESSAGES)->errors();
         $queryDates = $dateErrors->isEmpty() ? $dateRange : [];
 
-        $insumos = app(InsumosTable::class)->query([
+        $insumos = $table->query([
             ...$queryDates,
             'buscar' => $this->buscar, 'filtroEstado' => $this->filtroEstado,
             'sortColumn' => $this->sortColumn, 'sortDirection' => $this->sortDirection,
@@ -789,34 +787,15 @@ class Index extends Component
             ->orderBy('nombre_singular')
             ->get();
 
-        // Historial del insumo seleccionado.
-        $movimientosHistorial = collect();
+        $insumoDetalle = null;
+        $movimientosInsumo = null;
+        if ($this->insumoDetalleId !== null) {
+            abort_unless(Auth::user()?->activo, 403);
 
-        if ($this->mostrarHistorial && $this->historialInsumoId !== null) {
-
-            $insumoId = $this->historialInsumoId;
-
-            $movimientosHistorial = MovimientoInventario::query()
-                ->with([
-                    'usuario',
-                    'detalles' => function ($query) use ($insumoId) {
-                        $query->where('tipo_item', 'insumo')
-                            ->where('item_id', $insumoId);
-                    },
-                ])
-                ->whereIn('tipo', [
-                    'apertura',
-                    'entrada',
-                    'salida',
-                ])
-                ->whereHas('detalles', function ($query) use ($insumoId) {
-                    $query->where('tipo_item', 'insumo')
-                        ->where('item_id', $insumoId);
-                })
-                ->orderByDesc('fecha_movimiento')
-                ->orderByDesc('id')
-                ->limit(50)
-                ->get();
+            $insumoDetalle = $table->query([])->with('creador:id,name')->find($this->insumoDetalleId);
+            if ($insumoDetalle !== null) {
+                $movimientosInsumo = $historial->supplyTimeline($insumoDetalle->id);
+            }
         }
 
         return view(
@@ -831,7 +810,8 @@ class Index extends Component
                 'opcionesCatalogoExistente',
                 'marcas',
                 'unidades',
-                'movimientosHistorial',
+                'insumoDetalle',
+                'movimientosInsumo',
             )
         );
     }

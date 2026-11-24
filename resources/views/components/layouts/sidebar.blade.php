@@ -3,7 +3,7 @@
 <aside id="app-sidebar" aria-label="Navegación principal" class="app-sidebar fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-line bg-surface">
     <div class="flex h-24 shrink-0 items-center gap-3 border-b border-line px-5">
         <a href="{{ route('dashboard') }}" class="shrink-0 rounded-lg" aria-label="Sistema de Inventario, ir al inicio">
-            <img src="{{ asset('image/LogoLaCeibaPNG.png') }}" alt="Escudo de La Ceiba" width="40" height="48" class="h-12 w-10 object-contain">
+            <img src="{{ asset('image/LogoLaCeibaPNG.webp') }}" alt="Escudo de La Ceiba" width="40" height="48" class="h-12 w-10 object-contain">
         </a>
         <div class="sidebar-label min-w-0">
             <p class="text-sm font-bold text-ink">Sistema de Inventario</p>

@@ -1,3 +1,7 @@
+@php
+    /** @var 'email'|'code'|'password' $step */
+@endphp
+
 <!DOCTYPE html>
 <html lang="es">
 
@@ -5,7 +9,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recuperar contraseña | {{ config('app.name') }}</title>
-    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.png') }}">
+    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.webp') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
@@ -13,7 +17,7 @@
     <main data-auth-actions class="flex min-h-dvh flex-col items-center justify-center gap-6 px-4 py-8 sm:px-8">
         <section aria-labelledby="recovery-title" class="flex w-full max-w-lg flex-col gap-6 rounded-3xl border border-[#DCE6E3] bg-white p-6 shadow-lg sm:p-10">
             <header class="flex items-center gap-4">
-                <img src="{{ asset('image/LogoLaCeibaPNG.png') }}" alt="Escudo de La Ceiba" width="120" height="120" class="size-24 object-contain">
+                <img src="{{ asset('image/LogoLaCeibaPNG.webp') }}" alt="Escudo de La Ceiba" width="120" height="120" class="size-24 object-contain">
                 <div>
                     <p class="font-semibold text-[#173C66] text-xl">Municipalidad de La Ceiba</p>
                     <p class="text-sm text-[#526871]">Departamento de Informática</p>

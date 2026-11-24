@@ -1,9 +1,9 @@
-@props(['id', 'trigger', 'title', 'description', 'label', 'icon', 'badge', 'badgeTone', 'editAction', 'editLabel'])
+@props(['id', 'trigger', 'title', 'description', 'label', 'icon', 'badge', 'badgeTone', 'editAction', 'editLabel', 'showTechnicalHistory' => true])
 
 @php
     $pestanas = [
         'general' => 'Información general',
-        'tecnico' => 'Historial técnico',
+        ...($showTechnicalHistory ? ['tecnico' => 'Historial técnico'] : []),
         'movimientos' => 'Movimientos',
     ];
     $claseEstado = match ($badgeTone) {
@@ -47,7 +47,7 @@
                 class="icon-button rounded-full"><x-icon name="close" class="size-4" /></button>
         </div>
 
-        <div role="tablist" aria-label="{{ $label }}" class="mt-3 grid grid-cols-3 gap-1 sm:gap-2"
+        <div role="tablist" aria-label="{{ $label }}" @class(['mt-3 grid gap-1 sm:gap-2', 'grid-cols-3' => $showTechnicalHistory, 'grid-cols-2' => ! $showTechnicalHistory])
             x-on:keydown.left.prevent="moveTab($event, -1)" x-on:keydown.right.prevent="moveTab($event, 1)"
             x-on:keydown.home.prevent="$refs.general.focus()" x-on:keydown.end.prevent="$refs.movimientos.focus()">
             @foreach ($pestanas as $clave => $etiqueta)
@@ -68,6 +68,7 @@
             {{ $general }}
         </div>
 
+        @if ($showTechnicalHistory)
         <div id="{{ $id }}-panel-tecnico" role="tabpanel" aria-labelledby="{{ $id }}-tab-tecnico"
             x-show="tab === 'tecnico'" style="display: none" tabindex="0" class="px-4 py-5 sm:px-5">
             <div class="flex items-start gap-3 rounded-xl border border-line bg-canvas/60 p-4">
@@ -78,6 +79,7 @@
                 </div>
             </div>
         </div>
+        @endif
 
         <div id="{{ $id }}-panel-movimientos" role="tabpanel" aria-labelledby="{{ $id }}-tab-movimientos"
             x-show="tab === 'movimientos'" style="display: none" tabindex="0" class="px-4 py-5 sm:px-5">

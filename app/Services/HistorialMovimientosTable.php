@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Auditoria;
 use App\Models\Equipo;
 use App\Models\Herramienta;
+use App\Models\Insumo;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -117,13 +118,29 @@ class HistorialMovimientosTable
     /** @return LengthAwarePaginator<int, stdClass> */
     public function toolTimeline(int $herramientaId): LengthAwarePaginator
     {
-        $operaciones = DB::query()->fromSub($this->events(herramientaId: $herramientaId), 'operaciones')
+        return $this->stockTimeline($this->events(herramientaId: $herramientaId), Herramienta::class, $herramientaId, 'movimientosHerramienta', 'También se actualizaron datos de la herramienta.');
+    }
+
+    /** @return LengthAwarePaginator<int, stdClass> */
+    public function supplyTimeline(int $insumoId): LengthAwarePaginator
+    {
+        $operaciones = $this->inventoryEvents($this->inkLabel())
+            ->where('d.tipo_item', 'insumo')
+            ->where('d.item_id', $insumoId);
+
+        return $this->stockTimeline($operaciones, Insumo::class, $insumoId, 'movimientosInsumo', 'También se actualizaron datos del insumo.');
+    }
+
+    /** @return LengthAwarePaginator<int, stdClass> */
+    private function stockTimeline(Builder $operaciones, string $modelo, int $id, string $pagina, string $detalleActualizacion): LengthAwarePaginator
+    {
+        $operaciones = DB::query()->fromSub($operaciones, 'operaciones')
             ->select('fecha', 'tipo', 'responsable_id', 'origen_id', 'fuente', 'cantidad', 'anterior', 'posterior', 'detalle')
             ->selectRaw('NULL as cambios');
 
         $auditorias = Auditoria::query()
-            ->where('modelo', Herramienta::class)
-            ->where('registro_id', $herramientaId)
+            ->where('modelo', $modelo)
+            ->where('registro_id', $id)
             ->whereIn('accion', ['actualizacion', 'activacion', 'desactivacion'])
             ->selectRaw("created_at as fecha, accion as tipo, usuario_id as responsable_id, id as origen_id,
                 'auditoria' as fuente, NULL as cantidad, NULL as anterior, NULL as posterior, '' as detalle, valores_nuevos as cambios");
@@ -134,13 +151,13 @@ class HistorialMovimientosTable
             ->orderByDesc('eventos.fecha')
             ->orderByDesc('eventos.origen_id')
             ->orderBy('eventos.fuente')
-            ->paginate(10, pageName: 'movimientosHerramienta')
-            ->through(function (stdClass $evento): stdClass {
+            ->paginate(10, pageName: $pagina)
+            ->through(function (stdClass $evento) use ($detalleActualizacion): stdClass {
                 if ($evento->tipo === 'actualizacion') {
                     $cambios = json_decode($evento->cambios ?? '{}', true);
                     if (isset($cambios['activo'])) {
                         $evento->tipo = $cambios['activo'] ? 'activacion' : 'desactivacion';
-                        $evento->detalle = count($cambios) > 1 ? 'También se actualizaron datos de la herramienta.' : '';
+                        $evento->detalle = count($cambios) > 1 ? $detalleActualizacion : '';
                     }
                 }
                 unset($evento->cambios);
@@ -163,24 +180,14 @@ class HistorialMovimientosTable
         return 'CONCAT('.implode(', ', $expressions).')';
     }
 
-    private function events(?int $equipoId = null, ?int $herramientaId = null): Builder
+    private function inkLabel(): string
     {
-        $inkLabel = $this->concat("COALESCE(t.nombre, 'Tinta no disponible')", "' - '", "COALESCE(t.color, '')");
-        $equipmentCode = "COALESCE(e.numero_inventario, e.numero_serie, e.modelo, 'Sin identificacion')";
-        $equipmentLabel = $this->concat("'Equipo: '", $equipmentCode);
-        $equipmentIdentifiers = $this->concat("COALESCE(e.numero_inventario, '')", "' '", "COALESCE(e.numero_serie, '')", "' '", "COALESCE(e.modelo, '')");
-        $assetIdentifiers = $this->concat("COALESCE(h.codigo_interno, '')", "' '", $equipmentIdentifiers);
-        $loanDescription = $this->concat("'Prestamo #'", 'p.id', "' | Departamento: '", "COALESCE(dep.nombre, 'No disponible')",
-            "' | Recibe: '", "COALESCE(p.persona_recibe, 'No especificado')");
-        $returnDescription = $this->concat("'Devolucion del prestamo #'", 'p.id', "' | '", "COALESCE(dv.observaciones, '')");
-        $refillDescription = $this->concat("'Recarga #'", 'r.id', "' | Impresora: '", $equipmentCode,
-            "' | Nivel de impresora: '", 'rd.porcentaje_antes', "'% a '", 'rd.porcentaje_despues', "'% | '", "COALESCE(r.observaciones, '')");
-        $legacyDescription = $this->concat("'Devolucion historica del prestamo #'", 'p.id');
+        return $this->concat("COALESCE(t.nombre, 'Tinta no disponible')", "' - '", "COALESCE(t.color, '')");
+    }
 
-        // Rehacer las uniones según tipo_item.
-        // Así un ID repetido en distintas tablas
-        // nunca identifica un artículo incorrecto.
-        $inventario = DB::table(
+    private function inventoryEvents(string $inkLabel): Builder
+    {
+        return DB::table(
             'movimiento_inventario_detalles as d'
         )
             ->join(
@@ -234,6 +241,23 @@ class HistorialMovimientosTable
                 'inventario' AS fuente,
                 COALESCE(h.codigo_interno, '') AS identificadores
             ");
+    }
+
+    private function events(?int $equipoId = null, ?int $herramientaId = null): Builder
+    {
+        $inkLabel = $this->inkLabel();
+        $equipmentCode = "COALESCE(e.numero_inventario, e.numero_serie, e.modelo, 'Sin identificacion')";
+        $equipmentLabel = $this->concat("'Equipo: '", $equipmentCode);
+        $equipmentIdentifiers = $this->concat("COALESCE(e.numero_inventario, '')", "' '", "COALESCE(e.numero_serie, '')", "' '", "COALESCE(e.modelo, '')");
+        $assetIdentifiers = $this->concat("COALESCE(h.codigo_interno, '')", "' '", $equipmentIdentifiers);
+        $loanDescription = $this->concat("'Prestamo #'", 'p.id', "' | Departamento: '", "COALESCE(dep.nombre, 'No disponible')",
+            "' | Recibe: '", "COALESCE(p.persona_recibe, 'No especificado')");
+        $returnDescription = $this->concat("'Devolucion del prestamo #'", 'p.id', "' | '", "COALESCE(dv.observaciones, '')");
+        $refillDescription = $this->concat("'Recarga #'", 'r.id', "' | Impresora: '", $equipmentCode,
+            "' | Nivel de impresora: '", 'rd.porcentaje_antes', "'% a '", 'rd.porcentaje_despues', "'% | '", "COALESCE(r.observaciones, '')");
+        $legacyDescription = $this->concat("'Devolucion historica del prestamo #'", 'p.id');
+
+        $inventario = $this->inventoryEvents($inkLabel);
 
         // 2. Préstamos de herramientas y equipos.
         $prestamos = DB::table('prestamo_detalles as pd')

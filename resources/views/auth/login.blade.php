@@ -7,7 +7,7 @@
 
     <title>Iniciar sesión | {{ config('app.name') }}</title>
 
-    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.png') }}">
+    <link rel="icon" href="{{ asset('image/LogoLaCeibaPNG.webp') }}">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
@@ -27,7 +27,7 @@
 
                 <div class="hidden flex-1 items-center justify-center py-9 lg:flex">
                     <img
-                        src="{{ asset('image/PortadaLaCeiba.jpg') }}"
+                        src="{{ asset('image/PortadaLaCeiba.webp') }}"
                         alt="La Ceiba, la novia de Honduras"
                         width="508"
                         height="393"
@@ -44,7 +44,7 @@
                     <div class="flex flex-col gap-3 items-center">
                         <header class="flex items-center gap-4">
                             <img
-                                src="{{ asset('image/LogoLaCeibaPNG.png') }}"
+                                src="{{ asset('image/LogoLaCeibaPNG.webp') }}"
                                 alt="Escudo de La Ceiba"
                                 width="447"
                                 height="447"
