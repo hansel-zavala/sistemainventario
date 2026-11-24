@@ -9,6 +9,7 @@ use App\Models\Tinta;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class RecargasTableTest extends TestCase
@@ -67,14 +68,61 @@ class RecargasTableTest extends TestCase
         $user = User::factory()->create(['activo' => true]);
         $printer = Equipo::factory()->create();
         $printer->tipoEquipo->update(['nombre' => 'Impresora']);
-        $ink = Tinta::factory()->create(['botellas_completas' => 2, 'porcentaje_botella_abierta' => 0]);
+        $ink = Tinta::factory()->create(['nombre' => 'Tinta de prueba', 'botellas_completas' => 2, 'porcentaje_botella_abierta' => 0]);
 
         Livewire::actingAs($user)->test(Index::class)->call('nuevaRecarga')
             ->set('equipoId', (string) $printer->id)->set('detalles.0.tinta_id', (string) $ink->id)
-            ->set('detalles.0.porcentaje_antes', '10')->set('detalles.0.porcentaje_agregado', '20')
+            ->set('detalles.0.porcentaje_antes', '10.5')->set('detalles.0.porcentaje_agregado', '20')
             ->call('guardarRecarga')->assertHasNoErrors()->assertSet('mostrarModal', false)
-            ->assertSee('Mostrando 1 de 1 recargas encontradas');
+            ->assertSee('Mostrando 1 de 1 recargas encontradas')
+            ->assertSeeHtmlInOrder(['1 tinta', 'Tinta de prueba', 'Anterior', '10.5 %', 'Agregado', '+ 20 %', 'Posterior', '30.5 %'])
+            ->assertDontSeeText('Ver registro completo');
 
         $this->assertDatabaseHas('tintas', ['id' => $ink->id, 'botellas_completas' => 1, 'porcentaje_botella_abierta' => 80]);
+    }
+
+    #[DataProvider('multiInkPreviews')]
+    public function test_multi_ink_refill_shows_a_preview_and_all_inks_in_the_detail(int $inkCount, int $previewCount, array $remainingNotice): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $printer = Equipo::factory()->create();
+        $refill = RecargaTinta::create([
+            'equipo_id' => $printer->id,
+            'realizado_por' => $user->id,
+            'observaciones' => 'Impresión de prueba realizada.',
+        ]);
+        $inkNames = [];
+        foreach (array_slice(['Amarillo', 'Cian', 'Magenta', 'Negro', 'Gris'], 0, $inkCount) as $color) {
+            $inkName = "Referencia $color";
+            $inkNames[] = $inkName;
+            $ink = Tinta::factory()->create(['nombre' => $inkName, 'color' => $color]);
+            $refill->detalles()->create([
+                'tinta_id' => $ink->id,
+                'porcentaje_antes' => 10,
+                'porcentaje_agregado' => 20,
+                'porcentaje_despues' => 30,
+            ]);
+        }
+
+        $history = Livewire::actingAs($user)->test(Index::class);
+
+        $history->assertSeeHtmlInOrder([
+            "Recarga #{$refill->id}", "$inkCount tintas", ...array_slice($inkNames, 0, $previewCount),
+            ...$remainingNotice, 'Tintas registradas', 'Anterior', 'Agregado', 'Posterior',
+            ...$inkNames, 'Impresión de prueba realizada.', 'Ver registro completo', 'Ocultar detalle',
+        ]);
+
+        foreach (array_slice($inkNames, $previewCount) as $inkName) {
+            $this->assertSame(1, substr_count($history->html(true), $inkName));
+        }
+    }
+
+    public static function multiInkPreviews(): array
+    {
+        return [
+            'three inks are all visible in the preview' => [3, 3, []],
+            'four inks show a two-ink preview' => [4, 2, ['Y 2 tintas más…']],
+            'five inks show a two-ink preview' => [5, 2, ['Y 3 tintas más…']],
+        ];
     }
 }
