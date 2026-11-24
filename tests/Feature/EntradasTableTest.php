@@ -113,9 +113,35 @@ class EntradasTableTest extends TestCase
             ->set('detalles.0.tipo_item', 'insumo')->set('detalles.0.item_id', (string) $item->id)
             ->set('detalles.0.cantidad', '3')->call('guardarEntrada')
             ->assertHasNoErrors()->assertSee('Entrada de inventario registrada correctamente.')
-            ->assertSee('Papel carta')->assertSee('Página 1 de 1');
+            ->assertSeeHtmlInOrder(['Entrada #', 'Insumo', 'Papel carta', 'Anterior', '10', 'Entrada', '+ 3', 'Posterior', '13'])
+            ->assertDontSeeText('Ver registro completo')->assertSee('Página 1 de 1');
 
         $this->assertDatabaseHas('insumos', ['id' => $item->id, 'cantidad_actual' => 13]);
+    }
+
+    public function test_entry_with_four_articles_previews_two_and_keeps_every_article_in_the_detail(): void
+    {
+        $user = User::factory()->create(['name' => 'Ana Responsable', 'activo' => true]);
+        $tool = Herramienta::factory()->create(['nombre' => 'Taladro de banco']);
+        $ink = Tinta::factory()->create(['nombre' => 'Botella Epson', 'color' => 'Cian']);
+        $supply = Insumo::factory()->create(['nombre' => 'Cinta de embalaje']);
+        $entry = $this->entry($user, '2026-11-02 14:35:00', [
+            ['herramienta', $tool->id],
+            ['tinta', $ink->id],
+            ['insumo', $supply->id],
+            ['insumo', 999999],
+        ], 'Pedido central recibido.');
+
+        $history = Livewire::actingAs($user)->test(Index::class);
+
+        $history->assertSeeHtmlInOrder([
+            "Entrada #{$entry->id}", '4 artículos', '02/11/2026 · 14:35', 'Ana Responsable',
+            'Taladro de banco', 'Botella Epson — Cian', 'Y 2 artículos más…', 'Artículos registrados',
+            'Taladro de banco', 'Herramienta', 'Botella Epson — Cian', 'Tinta', 'Cinta de embalaje', 'Insumo',
+            'Artículo no disponible', 'Pedido central recibido.', 'Ver registro completo', 'Ocultar detalle',
+        ]);
+        $this->assertSame(1, substr_count($history->html(true), 'Cinta de embalaje'));
+        $this->assertSame(1, substr_count($history->html(true), 'Artículo no disponible'));
     }
 
     #[TestWith(['entradas', 'entrada', Index::class])]

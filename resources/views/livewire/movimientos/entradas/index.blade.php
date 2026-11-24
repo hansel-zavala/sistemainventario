@@ -99,137 +99,15 @@
             @endforeach
         </x-slot:filterChips>
         <x-slot:content>
-    <div class="space-y-4 p-4">
-
-        @forelse ($movimientos as $movimiento)
-
-            <div wire:key="entradas-movimiento-{{ $movimiento->id }}" class="rounded-xl bg-white shadow-sm">
-
-                <div class="border-b border-gray-200 bg-gray-50 px-6 py-4">
-
-                    <div class="flex flex-col justify-between gap-2 md:flex-row">
-
-                        <div>
-
-                            <span class="font-semibold text-gray-800">
-                                Entrada #{{ $movimiento->id }}
-                            </span>
-
-                            <div class="mt-1 text-sm text-gray-500">
-                                {{ $movimiento->fecha_movimiento->format('d/m/Y H:i') }}
-                            </div>
-
-                        </div>
-
-                        <div class="text-sm text-gray-600">
-                            Registrado por:
-                            <span class="font-medium">
-                                {{ $movimiento->usuario?->name ?? 'Usuario no disponible' }}
-                            </span>
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <div class="overflow-x-auto">
-
-                    <table class="w-full">
-
-                        <thead>
-
-                            <tr class="text-xs uppercase text-gray-500">
-
-                                <th class="px-6 py-3 text-left">
-                                    Tipo
-                                </th>
-
-                                <th class="px-6 py-3 text-left">
-                                    Artículo
-                                </th>
-
-                                <th class="px-6 py-3 text-right">
-                                    Anterior
-                                </th>
-
-                                <th class="px-6 py-3 text-right">
-                                    Entrada
-                                </th>
-
-                                <th class="px-6 py-3 text-right">
-                                    Posterior
-                                </th>
-
-                            </tr>
-
-                        </thead>
-
-
-                        <tbody class="divide-y divide-gray-100">
-
-                            @foreach ($movimiento->detalles as $detalle)
-
-                                <tr wire:key="entradas-articulo-{{ $detalle->id }}">
-
-                                    <td class="px-6 py-3 text-gray-600">
-                                        {{ $types[$detalle->tipo_item] ?? $detalle->tipo_item }}
-                                    </td>
-
-                                    <td class="px-6 py-3 font-medium text-gray-800">
-                                        {{ \App\Services\EntradasTable::articleName($detalle) }}
-                                    </td>
-
-                                    <td class="px-6 py-3 text-right text-gray-600">
-                                        {{ rtrim(rtrim(number_format((float) $detalle->existencia_anterior, 2, '.', ''), '0'), '.') }}
-                                    </td>
-
-                                    <td class="px-6 py-3 text-right font-semibold text-green-700">
-                                        + {{ rtrim(rtrim(number_format((float) $detalle->cantidad, 2, '.', ''), '0'), '.') }}
-                                    </td>
-
-                                    <td class="px-6 py-3 text-right font-medium text-gray-800">
-                                        {{ rtrim(rtrim(number_format((float) $detalle->existencia_posterior, 2, '.', ''), '0'), '.') }}
-                                    </td>
-
-                                </tr>
-
-                            @endforeach
-
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-
-                @if ($movimiento->observaciones)
-
-                    <div class="border-t border-gray-100 px-6 py-4 text-sm text-gray-600">
-
-                        <span class="font-medium">
-                            Observaciones:
-                        </span>
-
-                        {{ $movimiento->observaciones }}
-
-                    </div>
-
-                @endif
-
+            <div class="space-y-3 p-3 sm:p-4">
+                @forelse ($movimientos as $movimiento)
+                    @include('livewire.movimientos.entradas.tarjeta-historial', ['movimiento' => $movimiento])
+                @empty
+                    <p class="rounded-xl border border-line bg-canvas px-4 py-10 text-center text-sm text-muted">
+                        {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver las entradas.' : 'No se encontraron entradas.' }}
+                    </p>
+                @endforelse
             </div>
-
-        @empty
-
-            <div class="rounded-xl bg-white px-6 py-12 text-center text-gray-500 shadow-sm">
-                {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver las entradas.' : 'No se encontraron entradas.' }}
-            </div>
-
-        @endforelse
-
-    </div>
-
-
         </x-slot:content>
         <x-slot:pagination>
             <x-table-pagination :paginator="$movimientos" label="Paginación de entradas" />
