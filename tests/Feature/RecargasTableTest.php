@@ -75,14 +75,43 @@ class RecargasTableTest extends TestCase
             ->set('detalles.0.porcentaje_antes', '10.5')->set('detalles.0.porcentaje_agregado', '20')
             ->call('guardarRecarga')->assertHasNoErrors()->assertSet('mostrarModal', false)
             ->assertSee('Mostrando 1 de 1 recargas encontradas')
-            ->assertSeeHtmlInOrder(['1 tinta', 'Tinta de prueba', 'Anterior', '10.5 %', 'Agregado', '+ 20 %', 'Posterior', '30.5 %'])
+            ->assertSeeHtmlInOrder([
+                '1 tinta', 'Técnico', e($user->name), 'Ver detalle', 'Ocultar',
+                'Tinta de prueba', 'Anterior', '10.5 %', 'Agregado', '+ 20 %', 'Posterior', '30.5 %',
+            ])
             ->assertDontSeeText('Ver registro completo');
 
         $this->assertDatabaseHas('tintas', ['id' => $ink->id, 'botellas_completas' => 1, 'porcentaje_botella_abierta' => 80]);
     }
 
+    public function test_refill_with_two_inks_shows_all_levels_in_each_row(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $printer = Equipo::factory()->create();
+        $refill = RecargaTinta::create([
+            'equipo_id' => $printer->id,
+            'realizado_por' => $user->id,
+            'observaciones' => 'Impresión de prueba realizada.',
+        ]);
+        $cyan = Tinta::factory()->create(['nombre' => 'Referencia cian', 'color' => 'Cian']);
+        $black = Tinta::factory()->create(['nombre' => 'Referencia negra', 'color' => 'Negro']);
+        $refill->detalles()->createMany([
+            ['tinta_id' => $cyan->id, 'porcentaje_antes' => 75, 'porcentaje_agregado' => 25, 'porcentaje_despues' => 100],
+            ['tinta_id' => $black->id, 'porcentaje_antes' => 10.5, 'porcentaje_agregado' => 20, 'porcentaje_despues' => 30.5],
+        ]);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSeeHtmlInOrder([
+                "Recarga #{$refill->id}", '2 tintas', 'Técnico', e($user->name), 'Ver detalle', 'Ocultar',
+                'Referencia cian', 'Anterior', '75 %', 'Agregado', '+ 25 %', 'Posterior', '100 %',
+                'Referencia negra', 'Anterior', '10.5 %', 'Agregado', '+ 20 %', 'Posterior', '30.5 %',
+                'Impresión de prueba realizada.',
+            ])
+            ->assertDontSeeHtml('<caption');
+    }
+
     #[DataProvider('multiInkPreviews')]
-    public function test_multi_ink_refill_shows_a_preview_and_all_inks_in_the_detail(int $inkCount, int $previewCount, array $remainingNotice): void
+    public function test_multi_ink_refill_shows_levels_in_the_preview_and_for_all_inks_in_the_detail(int $inkCount, int $previewCount, array $remainingNotice): void
     {
         $user = User::factory()->create(['activo' => true]);
         $printer = Equipo::factory()->create();
@@ -92,9 +121,11 @@ class RecargasTableTest extends TestCase
             'observaciones' => 'Impresión de prueba realizada.',
         ]);
         $inkNames = [];
+        $detailRows = [];
         foreach (array_slice(['Amarillo', 'Cian', 'Magenta', 'Negro', 'Gris'], 0, $inkCount) as $color) {
             $inkName = "Referencia $color";
             $inkNames[] = $inkName;
+            array_push($detailRows, $inkName, '10 %', '+ 20 %', '30 %');
             $ink = Tinta::factory()->create(['nombre' => $inkName, 'color' => $color]);
             $refill->detalles()->create([
                 'tinta_id' => $ink->id,
@@ -103,14 +134,18 @@ class RecargasTableTest extends TestCase
                 'porcentaje_despues' => 30,
             ]);
         }
+        $previewRows = [];
+        foreach (array_slice($inkNames, 0, $previewCount) as $inkName) {
+            array_push($previewRows, $inkName, 'Anterior', '10 %', 'Agregado', '+ 20 %', 'Posterior', '30 %');
+        }
 
         $history = Livewire::actingAs($user)->test(Index::class);
 
         $history->assertSeeHtmlInOrder([
-            "Recarga #{$refill->id}", "$inkCount tintas", ...array_slice($inkNames, 0, $previewCount),
-            ...$remainingNotice, 'Tintas registradas', 'Anterior', 'Agregado', 'Posterior',
-            ...$inkNames, 'Impresión de prueba realizada.', 'Ver registro completo', 'Ocultar detalle',
-        ]);
+            "Recarga #{$refill->id}", "$inkCount tintas", 'Técnico', e($user->name), 'Ver detalle', 'Ocultar',
+            ...$previewRows, ...$remainingNotice, 'Tintas registradas', 'Anterior', 'Agregado', 'Posterior',
+            ...$detailRows, 'Impresión de prueba realizada.',
+        ])->assertDontSeeText('Ver registro completo');
 
         foreach (array_slice($inkNames, $previewCount) as $inkName) {
             $this->assertSame(1, substr_count($history->html(true), $inkName));

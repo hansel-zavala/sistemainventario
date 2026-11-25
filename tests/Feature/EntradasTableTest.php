@@ -113,10 +113,33 @@ class EntradasTableTest extends TestCase
             ->set('detalles.0.tipo_item', 'insumo')->set('detalles.0.item_id', (string) $item->id)
             ->set('detalles.0.cantidad', '3')->call('guardarEntrada')
             ->assertHasNoErrors()->assertSee('Entrada de inventario registrada correctamente.')
-            ->assertSeeHtmlInOrder(['Entrada #', 'Insumo', 'Papel carta', 'Anterior', '10', 'Entrada', '+ 3', 'Posterior', '13'])
+            ->assertSeeHtmlInOrder([
+                'Entrada #', 'Insumo', 'Registrado por', e($user->name), 'Ver detalle', 'Ocultar',
+                'Papel carta', 'Anterior', '10', 'Entrada', '+ 3', 'Posterior', '13',
+            ])
             ->assertDontSeeText('Ver registro completo')->assertSee('Página 1 de 1');
 
         $this->assertDatabaseHas('insumos', ['id' => $item->id, 'cantidad_actual' => 13]);
+    }
+
+    public function test_entry_with_two_articles_shows_each_type_and_quantity_inline(): void
+    {
+        $user = User::factory()->create(['name' => 'Ana Responsable', 'activo' => true]);
+        $tool = Herramienta::factory()->create(['nombre' => 'Taladro de banco']);
+        $supply = Insumo::factory()->create(['nombre' => 'Cinta de embalaje']);
+        $entry = $this->entry($user, '2026-11-02 14:35:00', [
+            ['herramienta', $tool->id],
+            ['insumo', $supply->id],
+        ], 'Pedido central recibido.');
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSeeHtmlInOrder([
+                "Entrada #{$entry->id}", '2 artículos', 'Ana Responsable', 'Ver detalle', 'Ocultar',
+                'Taladro de banco', 'Herramienta', 'Anterior', '1', 'Entrada', '+ 2', 'Posterior', '3',
+                'Cinta de embalaje', 'Insumo', 'Anterior', '1', 'Entrada', '+ 2', 'Posterior', '3',
+                'Pedido central recibido.',
+            ])
+            ->assertDontSeeHtml('<caption');
     }
 
     public function test_entry_with_four_articles_previews_two_and_keeps_every_article_in_the_detail(): void
@@ -136,10 +159,13 @@ class EntradasTableTest extends TestCase
 
         $history->assertSeeHtmlInOrder([
             "Entrada #{$entry->id}", '4 artículos', '02/11/2026 · 14:35', 'Ana Responsable',
-            'Taladro de banco', 'Botella Epson — Cian', 'Y 2 artículos más…', 'Artículos registrados',
+            'Ver detalle', 'Ocultar',
+            'Taladro de banco', 'Herramienta', 'Anterior', '1', 'Entrada', '+ 2', 'Posterior', '3',
+            'Botella Epson — Cian', 'Tinta', 'Anterior', '1', 'Entrada', '+ 2', 'Posterior', '3',
+            'Y 2 artículos más…', 'Artículos registrados',
             'Taladro de banco', 'Herramienta', 'Botella Epson — Cian', 'Tinta', 'Cinta de embalaje', 'Insumo',
-            'Artículo no disponible', 'Pedido central recibido.', 'Ver registro completo', 'Ocultar detalle',
-        ]);
+            'Artículo no disponible', 'Pedido central recibido.',
+        ])->assertDontSeeText('Ver registro completo');
         $this->assertSame(1, substr_count($history->html(true), 'Cinta de embalaje'));
         $this->assertSame(1, substr_count($history->html(true), 'Artículo no disponible'));
     }

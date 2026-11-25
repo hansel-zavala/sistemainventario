@@ -119,16 +119,48 @@ class SalidasTableTest extends TestCase
         $user = User::factory()->create(['activo' => true]);
         $item = Insumo::factory()->create(['cantidad_actual' => 10, 'nombre' => 'Papel carta']);
 
-        $department = Departamento::factory()->create();
+        $department = Departamento::factory()->create(['nombre' => 'Archivo', 'sigla' => 'AR']);
 
         Livewire::actingAs($user)->test(Index::class)->call('nuevaSalida')
             ->set('departamentoDestinoId', (string) $department->id)->set('personaRecibe', 'Laura')->set('motivo', 'Reposición')
+            ->set('observaciones', 'Entrega confirmada.')
             ->set('detalles.0.tipo_item', 'insumo')->set('detalles.0.item_id', (string) $item->id)
             ->set('detalles.0.cantidad', '3')->call('guardarSalida')
             ->assertHasNoErrors()->assertSee('Salida de inventario registrada correctamente.')
-            ->assertSee('Papel carta')->assertSee('Página 1 de 1');
+            ->assertSeeHtmlInOrder([
+                'Salida #', '1 artículo', 'Registrado por', e($user->name), 'Ver detalle', 'Ocultar',
+                'Destino', 'Archivo (AR)', 'Recibe', 'Laura', 'Motivo', 'Reposición',
+                'Papel carta', 'Insumo · 1 artículo registrado', '− 3', 'Anterior', 'Salida', 'Posterior',
+                'Papel carta', 'Insumo', '10', '− 3', '7', 'Entrega confirmada.',
+            ])->assertSee('Página 1 de 1');
 
         $this->assertDatabaseHas('insumos', ['id' => $item->id, 'cantidad_actual' => 7]);
+    }
+
+    public function test_exit_with_four_articles_previews_two_and_keeps_all_articles_in_the_detail(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $tool = Herramienta::factory()->create(['nombre' => 'Taladro de banco']);
+        $ink = Tinta::factory()->create(['nombre' => 'Botella Epson', 'color' => 'Cian']);
+        $supply = Insumo::factory()->create(['nombre' => 'Cinta de embalaje']);
+        $exit = $this->entry($user, '2026-11-02 14:11:00', [
+            ['herramienta', $tool->id],
+            ['tinta', $ink->id],
+            ['insumo', $supply->id],
+            ['insumo', 999999],
+        ]);
+
+        $history = Livewire::actingAs($user)->test(Index::class);
+
+        $history->assertSeeHtmlInOrder([
+            "Salida #{$exit->id}", '4 artículos', '02/11/2026 · 14:11', 'Registrado por', e($user->name),
+            'Ver detalle', 'Ocultar', 'Sin destino',
+            'Taladro de banco', '− 2', 'Botella Epson — Cian', '− 2', 'Artículos registrados',
+            'Y 2 artículos más…', 'Anterior', 'Salida', 'Posterior',
+            'Taladro de banco', 'Botella Epson — Cian', 'Cinta de embalaje', 'Artículo no disponible',
+        ])->assertDontSeeText('Ver registro completo');
+        $this->assertSame(1, substr_count($history->html(true), 'Cinta de embalaje'));
+        $this->assertSame(1, substr_count($history->html(true), 'Artículo no disponible'));
     }
 
     private function entry(User $user, string $date, array $items, ?string $notes = null, ?int $department = null): MovimientoInventario
