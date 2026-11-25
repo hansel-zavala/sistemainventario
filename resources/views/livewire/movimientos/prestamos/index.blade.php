@@ -113,136 +113,15 @@
             @endforeach
         </x-slot:filterChips>
         <x-slot:content>
-    <div class="space-y-4 p-4">
-        @forelse ($prestamos as $prestamo)
-            <div
-                wire:key="prestamo-{{ $prestamo->id }}"
-                class="overflow-hidden rounded-xl bg-white shadow-sm"
-            >
-                <div class="border-b border-gray-200 bg-gray-50 px-6 py-4">
-                    <div class="flex flex-col justify-between gap-3 md:flex-row">
-                        <div>
-                            <div class="flex flex-wrap items-center gap-2">
-                                <h2 class="font-semibold text-gray-800">
-                                    Préstamo #{{ $prestamo->id }}
-                                </h2>
-
-                                @if ($prestamo->estado === 'completado')
-                                    <span class="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
-                                        Completado
-                                    </span>
-                                @elseif ($prestamo->esta_vencido)
-                                    <span class="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800">
-                                        Vencido
-                                    </span>
-                                @else
-                                    <span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
-                                        Activo
-                                    </span>
-                                @endif
-                            </div>
-
-                            <p class="mt-2 text-sm text-gray-600">
-                                <strong>Destino:</strong>
-                                {{ $prestamo->departamentoDestino?->nombre ?? 'No disponible' }}
-                            </p>
-
-                            <p class="mt-1 text-sm text-gray-600">
-                                <strong>Recibe:</strong>
-                                {{ $prestamo->persona_recibe }}
-                            </p>
-                        </div>
-
-                        <div class="space-y-1 text-sm text-gray-600 md:text-right">
-                            <p>
-                                <strong>Préstamo:</strong>
-                                {{ $prestamo->fecha_prestamo->format('d/m/Y h:i A') }}
-                            </p>
-                            <p>
-                                <strong>Devolución prevista:</strong>
-                                {{ $prestamo->fecha_prevista_devolucion->format('d/m/Y h:i A') }}
-                            </p>
-                            <p>
-                                <strong>Registrado por:</strong>
-                                {{ $prestamo->usuario?->name ?? 'No disponible' }}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead>
-                            <tr class="text-xs uppercase text-gray-500">
-                                <th class="px-5 py-3 text-left">Tipo</th>
-                                <th class="px-5 py-3 text-left">Activo</th>
-                                <th class="px-5 py-3 text-left">Código</th>
-                                <th class="px-5 py-3 text-right">Prestado</th>
-                                <th class="px-5 py-3 text-right">Devuelto</th>
-                                <th class="px-5 py-3 text-right">Pendiente</th>
-                                <th class="px-5 py-3 text-left">Estado</th>
-                            </tr>
-                        </thead>
-
-                        <tbody class="divide-y divide-gray-100">
-                            @foreach ($prestamo->detalles as $detalle)
-                                @php($asset = \App\Services\PrestamosTable::asset($detalle))
-                                <tr wire:key="prestamo-detalle-{{ $detalle->id }}">
-                                    <td class="px-5 py-3 text-sm text-gray-600">
-                                        {{ $asset['tipo'] }}
-                                    </td>
-
-                                    <td class="px-5 py-3 font-medium text-gray-800">
-                                        {{ $asset['articulo'] }}
-                                    </td>
-
-                                    <td class="px-5 py-3 text-gray-600">
-                                        {{ $asset['codigo'] ?: '—' }}
-                                    </td>
-
-                                    <td class="px-5 py-3 text-right text-gray-600">
-                                        {{ number_format((float) $detalle->cantidad_prestada, 2, '.', '') }}
-                                    </td>
-
-                                    <td class="px-5 py-3 text-right text-gray-600">
-                                        {{ number_format((float) $detalle->cantidad_devuelta, 2, '.', '') }}
-                                    </td>
-
-                                    <td class="px-5 py-3 text-right font-semibold text-gray-800">
-                                        {{ number_format($detalle->cantidad_pendiente, 2, '.', '') }}
-                                    </td>
-
-                                    <td class="px-5 py-3">
-                                        @if ($detalle->estado === 'devuelto')
-                                            <span class="font-medium text-green-700">
-                                                Devuelto
-                                            </span>
-                                        @else
-                                            <span class="font-medium text-blue-700">
-                                                Prestado
-                                            </span>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-
-                @if ($prestamo->observaciones)
-                    <div class="border-t border-gray-100 px-5 py-3 text-sm text-gray-600">
-                        <strong>Observaciones:</strong>
-                        {{ $prestamo->observaciones }}
-                    </div>
-                @endif
+            <div class="space-y-3 p-3 sm:p-4">
+                @forelse ($prestamos as $prestamo)
+                    @include('livewire.movimientos.prestamos.tarjeta-historial', ['prestamo' => $prestamo])
+                @empty
+                    <p class="rounded-xl border border-line bg-canvas px-4 py-10 text-center text-sm text-muted">
+                        {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver los préstamos.' : 'No se encontraron préstamos.' }}
+                    </p>
+                @endforelse
             </div>
-        @empty
-            <div class="rounded-xl bg-white px-6 py-12 text-center text-gray-500 shadow-sm">
-                {{ $filterErrors->isNotEmpty() ? 'Corrija los filtros para ver los préstamos.' : 'No se encontraron préstamos.' }}
-            </div>
-        @endforelse
-    </div>
-
         </x-slot:content>
         <x-slot:pagination>
             <x-table-pagination :paginator="$prestamos" label="Paginación de préstamos" />

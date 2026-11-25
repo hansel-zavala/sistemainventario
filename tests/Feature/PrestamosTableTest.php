@@ -47,6 +47,7 @@ class PrestamosTableTest extends TestCase
             ->set('tipoArticulo', 'equipo')->set('filtroEstado', 'vencido')->set('destino', (string) $archive->id)
             ->set('desde', '2026-11-08')->set('hasta', '2026-11-08')->set('orden', 'antiguos')
             ->assertSee('Departamento destino: Archivo histórico')->assertSee('Taladro de respaldo')
+            ->assertSeeHtml('>Vencido</span>')
             ->assertViewHas('prestamos', fn ($rows): bool => $rows->pluck('id')->all() === [$first->id, $last->id])
             ->assertSee('Página 1 de 1')->assertSee('wire:click="nextPage" disabled', false)
             ->set('desde', '2026-11-09')->assertSee('La fecha final debe ser igual o posterior a la fecha inicial.')
@@ -72,6 +73,50 @@ class PrestamosTableTest extends TestCase
         Livewire::actingAs($user)->test(Index::class)
             ->assertSee('Mostrando 10 de 11 préstamos encontrados')->call('nextPage')->assertSee('Página 2 de 2')
             ->set('orden', 'antiguos')->assertSet('paginators.page', 1)->assertSee('Página 1 de 2');
+    }
+
+    public function test_active_loan_card_shows_pending_units_and_all_asset_details(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 9)->setTime(12, 0));
+        $user = User::factory()->create(['name' => 'Usuario de inventario', 'activo' => true]);
+        $department = Departamento::factory()->create(['nombre' => 'Archivo']);
+        $tool = Herramienta::factory()->create(['nombre' => 'Taladro de banco', 'tipo_control' => 'cantidad', 'codigo_interno' => 'HT-042']);
+        $equipment = Equipo::factory()->create(['modelo' => 'Equipo de prueba', 'numero_inventario' => 'EQ-HIST-42']);
+        $loan = $this->loan($user, $department, '2026-11-08 08:34:00', 'Verificar la entrega.');
+        $loan->detalles()->createMany([
+            ['herramienta_id' => $tool->id, 'cantidad_prestada' => 3.5, 'cantidad_devuelta' => 1.25, 'estado' => 'prestado'],
+            ['equipo_id' => $equipment->id, 'cantidad_prestada' => 1, 'cantidad_devuelta' => 0, 'estado' => 'prestado'],
+        ]);
+
+        $history = Livewire::actingAs($user)->test(Index::class);
+
+        $history->assertSeeHtmlInOrder([
+            "Préstamo #{$loan->id}", 'Activo', '08/11/2026 08:34 AM', 'Devolución prevista',
+            '10/11/2026 12:00 AM', 'Ver artículos', 'Ocultar detalle',
+            'Destino', 'Archivo', 'Recibe', 'Ana Responsable', 'Registrado por', 'Usuario de inventario',
+            '2 artículos prestados', '3.25 unidades pendientes de devolución',
+            'Activo / Código', 'Prestado', 'Devuelto', 'Pendiente',
+            'Taladro de banco', 'Herramienta por cantidad · HT-042', '3.5', '1.25', '2.25',
+            'Equipo de prueba', 'Equipo · EQ-HIST-42', '2 artículos en el préstamo', 'Devolución pendiente', 'Verificar la entrega.',
+        ])->assertSeeHtml('aria-controls="prestamo-'.$loan->id.'-detail"');
+    }
+
+    public function test_completed_loan_card_summarizes_the_single_returned_asset(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 16));
+        $user = User::factory()->create(['activo' => true]);
+        $department = Departamento::factory()->create();
+        $tool = Herramienta::factory()->create(['nombre' => 'Martillo', 'codigo_interno' => 'MAR-02']);
+        $loan = $this->loan($user, $department, '2026-11-08 08:34:00', 'Entrega completada.');
+        $loan->update(['estado' => 'completado']);
+        $loan->detalles()->create(['herramienta_id' => $tool->id, 'cantidad_prestada' => 4, 'cantidad_devuelta' => 4, 'estado' => 'devuelto']);
+
+        $history = Livewire::actingAs($user)->test(Index::class);
+
+        $history->assertSeeHtmlInOrder([
+            "Préstamo #{$loan->id}", 'Completado', 'Ver artículos', 'Martillo', 'Todos los artículos han sido devueltos',
+            'Activo / Código', 'Martillo', 'MAR-02', '1 artículo en el préstamo', 'Sin pendientes',
+        ])->assertDontSeeText('Devolución pendiente');
     }
 
     private function loan(User $user, Departamento $department, string $date, string $notes): Prestamo

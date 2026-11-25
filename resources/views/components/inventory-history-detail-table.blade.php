@@ -1,7 +1,7 @@
-@props(['id', 'title', 'details', 'itemLabel', 'columns'])
+@props(['id', 'title', 'details', 'itemLabel', 'columns', 'contextPrefix' => 'de la'])
 
 <table {{ $attributes->class(['w-full table-fixed border-t border-line text-sm']) }}>
-    <caption class="sr-only">Detalle de la {{ mb_strtolower($title) }}</caption>
+    <caption class="sr-only">Detalle {{ $contextPrefix }} {{ mb_strtolower($title) }}</caption>
     <thead class="border-b border-line text-xs text-muted">
         <tr>
             <th scope="col" class="py-2 pr-2 text-left font-medium">{{ $itemLabel }}</th>
@@ -20,7 +20,7 @@
                     @endif
                 </th>
                 @foreach ($columns as $field => [, $style])
-                    <td class="py-2 pl-1 text-right text-xs tabular-nums wrap-anywhere sm:text-sm {{ $style }}">
+                    <td class="py-2 pl-1 text-right text-xs tabular-nums wrap-anywhere sm:text-sm {{ $style }} {{ $detail['cellClasses'][$field] ?? '' }}">
                         {{ $detail[$field] }}
                     </td>
                 @endforeach
