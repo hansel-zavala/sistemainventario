@@ -130,44 +130,69 @@ class SalidasTableTest extends TestCase
             ->assertSeeHtmlInOrder([
                 'Salida #', '1 artículo', 'Registrado por', e($user->name), 'Ver detalle', 'Ocultar',
                 'Destino', 'Archivo (AR)', 'Recibe', 'Laura', 'Motivo', 'Reposición',
-                'Papel carta', 'Insumo · 1 artículo registrado', '− 3', 'Anterior', 'Salida', 'Posterior',
+                'Anterior</th>', 'Salida</th>', 'Posterior</th>',
                 'Papel carta', 'Insumo', '10', '− 3', '7', 'Entrega confirmada.',
             ])->assertSee('Página 1 de 1');
 
         $this->assertDatabaseHas('insumos', ['id' => $item->id, 'cantidad_actual' => 7]);
     }
 
-    public function test_exit_with_four_articles_previews_two_and_keeps_all_articles_in_the_detail(): void
+    public function test_exit_with_two_articles_shows_both_stock_changes_without_expanding(): void
+    {
+        $user = User::factory()->create(['activo' => true]);
+        $tool = Herramienta::factory()->create(['nombre' => 'Taladro de banco']);
+        $supply = Insumo::factory()->create(['nombre' => 'Cinta de embalaje']);
+        $exit = $this->entry($user, '2026-11-02 14:11:00', [
+            ['herramienta', $tool->id],
+            ['insumo', $supply->id],
+        ]);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSeeHtmlInOrder([
+                "Salida #{$exit->id}", '2 artículos', 'Anterior</th>', 'Salida</th>', 'Posterior</th>',
+                'Taladro de banco', 'Herramienta', '7', '− 2', '5',
+                'Cinta de embalaje', 'Insumo', '7', '− 2', '5',
+            ])
+            ->assertDontSeeHtml('aria-controls="salidas-movimiento-'.$exit->id.'-detail"');
+    }
+
+    #[TestWith([3, 'Y 1 artículo más…'])]
+    #[TestWith([4, 'Y 2 artículos más…'])]
+    public function test_exit_with_more_than_two_articles_previews_two_and_keeps_all_articles_in_the_detail(int $articleCount, string $remainingLabel): void
     {
         $user = User::factory()->create(['activo' => true]);
         $tool = Herramienta::factory()->create(['nombre' => 'Taladro de banco']);
         $ink = Tinta::factory()->create(['nombre' => 'Botella Epson', 'color' => 'Cian']);
         $supply = Insumo::factory()->create(['nombre' => 'Cinta de embalaje']);
-        $exit = $this->entry($user, '2026-11-02 14:11:00', [
+        $exit = $this->entry($user, '2026-11-02 14:11:00', array_slice([
             ['herramienta', $tool->id],
             ['tinta', $ink->id],
             ['insumo', $supply->id],
             ['insumo', 999999],
-        ]);
+        ], 0, $articleCount));
+        $hiddenArticles = array_slice(['Cinta de embalaje', 'Artículo no disponible'], 0, $articleCount - 2);
 
         $history = Livewire::actingAs($user)->test(Index::class);
 
         $history->assertSeeHtmlInOrder([
-            "Salida #{$exit->id}", '4 artículos', '02/11/2026 · 14:11', 'Registrado por', e($user->name),
+            "Salida #{$exit->id}", "$articleCount artículos", '02/11/2026 · 14:11', 'Registrado por', e($user->name),
             'Ver detalle', 'Ocultar', 'Sin destino',
-            'Taladro de banco', '− 2', 'Botella Epson — Cian', '− 2', 'Artículos registrados',
-            'Y 2 artículos más…', 'Anterior', 'Salida', 'Posterior',
-            'Taladro de banco', 'Botella Epson — Cian', 'Cinta de embalaje', 'Artículo no disponible',
+            'x-show="!expanded"', 'Anterior</th>', 'Salida</th>', 'Posterior</th>',
+            'Taladro de banco', '7', '− 2', '5', 'Botella Epson — Cian', '7', '− 2', '5',
+            $remainingLabel, 'x-show="expanded" style="display: none"', 'Artículos registrados',
+            'Anterior</th>', 'Salida</th>', 'Posterior</th>',
+            'Taladro de banco', 'Botella Epson — Cian', ...$hiddenArticles,
         ])->assertDontSeeText('Ver registro completo');
-        $this->assertSame(1, substr_count($history->html(true), 'Cinta de embalaje'));
-        $this->assertSame(1, substr_count($history->html(true), 'Artículo no disponible'));
+        foreach ($hiddenArticles as $article) {
+            $this->assertSame(1, substr_count($history->html(true), $article));
+        }
     }
 
     private function entry(User $user, string $date, array $items, ?string $notes = null, ?int $department = null): MovimientoInventario
     {
         $entry = MovimientoInventario::create(['tipo' => 'salida', 'registrado_por' => $user->id, 'fecha_movimiento' => $date, 'observaciones' => $notes, 'departamento_destino_id' => $department, 'persona_recibe' => 'Laura Receptora', 'motivo' => 'Reposición']);
         foreach ($items as [$type, $id]) {
-            $entry->detalles()->create(['tipo_item' => $type, 'item_id' => $id, 'cantidad' => 2, 'existencia_anterior' => 1, 'existencia_posterior' => 3]);
+            $entry->detalles()->create(['tipo_item' => $type, 'item_id' => $id, 'cantidad' => 2, 'existencia_anterior' => 7, 'existencia_posterior' => 5]);
         }
 
         return $entry;

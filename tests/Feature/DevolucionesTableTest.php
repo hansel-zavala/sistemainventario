@@ -89,17 +89,57 @@ class DevolucionesTableTest extends TestCase
 
     public function test_a_return_can_still_be_registered_from_the_loan_card(): void
     {
-        $user = User::factory()->create(['activo' => true]);
+        $this->travelTo(now()->setDate(2026, 11, 18)->setTime(15, 1));
+        $user = User::factory()->create(['name' => 'Usuario de inventario', 'activo' => true]);
         $department = Departamento::factory()->create();
-        $tool = Herramienta::factory()->create();
+        $tool = Herramienta::factory()->create(['nombre' => 'Taladro de prueba']);
         $loan = $this->loan($user, $department, '2026-11-20 00:00:00');
         $detail = $this->toolDetail($loan, $tool);
 
-        Livewire::actingAs($user)->test(Index::class)->call('abrirDevolucion', $loan->id)
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSeeHtmlInOrder([
+                "Préstamo #{$loan->id}", 'Activo', 'Fecha prevista', 'Registrar devolución', 'Ver artículos e historial',
+                '1 activo en el préstamo', '3 de 3', 'unidades pendientes', 'Historial de devoluciones',
+                'Todavía no se han registrado devoluciones.',
+            ])
+            ->assertSeeHtml('wire:click="abrirDevolucion('.$loan->id.')"')
+            ->call('abrirDevolucion', $loan->id)
             ->set('seleccionados.'.$detail->id, true)->set('cantidades.'.$detail->id, '1')
-            ->call('guardarDevolucion')->assertHasNoErrors()->assertSee('Devolución registrada correctamente.');
+            ->set('observacionesDetalle.'.$detail->id, 'Entrega parcial.')
+            ->call('guardarDevolucion')->assertHasNoErrors()->assertSee('Devolución registrada correctamente.')
+            ->assertSeeHtmlInOrder([
+                '2 de 3', 'unidades pendientes', 'Historial de devoluciones', 'Taladro de prueba · 1 unidad',
+                '18/11/2026 03:01 PM', 'Por Usuario de inventario', 'Entrega parcial.',
+            ]);
 
         $this->assertDatabaseHas('prestamo_devoluciones', ['prestamo_detalle_id' => $detail->id, 'cantidad' => 1, 'recibido_por' => $user->id]);
+    }
+
+    public function test_completed_loan_groups_return_events_for_different_assets_in_chronological_order(): void
+    {
+        $user = User::factory()->create(['name' => 'Usuario de inventario', 'activo' => true]);
+        $department = Departamento::factory()->create(['nombre' => 'Catastro']);
+        $tool = Herramienta::factory()->create(['nombre' => 'Martillo', 'codigo_interno' => 'MAR-02']);
+        $equipment = Equipo::factory()->create(['modelo' => 'Portátil de prueba', 'numero_inventario' => 'EQ-042']);
+        $loan = $this->loan($user, $department, '2026-11-20 00:00:00');
+        $loan->update(['estado' => 'completado']);
+        $toolDetail = $this->toolDetail($loan, $tool);
+        $toolDetail->update(['cantidad_devuelta' => 3, 'estado' => 'devuelto']);
+        $equipmentDetail = $loan->detalles()->create([
+            'equipo_id' => $equipment->id, 'cantidad_prestada' => 1, 'cantidad_devuelta' => 1, 'estado' => 'devuelto',
+        ]);
+        $toolDetail->devoluciones()->create(['fecha_devolucion' => '2026-11-19 15:00:00', 'cantidad' => 2, 'recibido_por' => $user->id]);
+        $equipmentDetail->devoluciones()->create(['fecha_devolucion' => '2026-11-18 09:00:00', 'cantidad' => 1, 'recibido_por' => $user->id]);
+        $toolDetail->devoluciones()->create(['fecha_devolucion' => '2026-11-17 11:00:00', 'cantidad' => 1, 'recibido_por' => $user->id]);
+
+        Livewire::actingAs($user)->test(Index::class)->set('filtroEstado', 'completados')
+            ->assertSeeHtmlInOrder([
+                "Préstamo #{$loan->id}", 'Completado', 'Catastro', 'Ver artículos e historial', 'Ocultar detalle',
+                '2 activos en el préstamo', 'Todos los artículos fueron devueltos', 'Prestado', 'Devuelto', 'Pendiente',
+                'Martillo', 'MAR-02', 'Portátil de prueba', 'EQ-042', 'Historial de devoluciones',
+                'Martillo · 1 unidad', '17/11/2026 11:00 AM', 'Portátil de prueba · 1 unidad', '18/11/2026 09:00 AM',
+                'Martillo · 2 unidades', '19/11/2026 03:00 PM',
+            ])->assertDontSeeText('Registrar devolución')->assertDontSeeText('Todavía no se han registrado devoluciones.');
     }
 
     private function loan(User $user, Departamento $department, string $due): Prestamo

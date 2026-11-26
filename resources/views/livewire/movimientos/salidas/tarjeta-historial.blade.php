@@ -13,9 +13,11 @@
         'after' => $formatearCantidad($detalle->existencia_posterior),
     ]);
     $cantidadArticulos = $articulos->count();
-    $articuloUnico = $cantidadArticulos === 1 ? $articulos->first() : null;
-    $cantidadVistaPrevia = $cantidadArticulos > 3 ? 2 : $cantidadArticulos;
-    $articulosRestantes = $cantidadArticulos - $cantidadVistaPrevia;
+    $vistaPrevia = $articulos->take(2);
+    $articulosRestantes = $cantidadArticulos - $vistaPrevia->count();
+    $mostrarTablaCompleta = $articulosRestantes > 0;
+    $tieneObservaciones = filled($movimiento->observaciones);
+    $mostrarDetalle = $mostrarTablaCompleta || ($cantidadArticulos > 0 && $tieneObservaciones);
     $columnasDetalle = [
         'before' => ['Anterior', 'text-ink'],
         'withdrawn' => ['Salida', 'font-medium text-red-700'],
@@ -47,7 +49,7 @@
         <div class="ml-auto min-w-0 text-right">
             <p class="text-xs text-muted">Registrado por</p>
             <p class="text-xs font-medium wrap-anywhere">{{ $movimiento->usuario?->name ?? 'Usuario no disponible' }}</p>
-            @if ($cantidadArticulos)
+            @if ($mostrarDetalle)
                 <x-inventory-history-detail-toggle :controls="$id.'-detail'" :title="$titulo" class="mt-2" />
             @endif
         </div>
@@ -65,42 +67,26 @@
     </dl>
 
     @if ($cantidadArticulos)
-        <div @class(['mt-5 border-t border-line pt-4', 'flex items-center justify-between gap-3' => $articuloUnico !== null])>
-            @if ($articuloUnico)
-                <div class="min-w-0">
-                    <p class="text-sm font-semibold wrap-anywhere">{{ $articuloUnico['name'] }}</p>
-                    <p class="mt-0.5 text-xs text-muted">{{ $articuloUnico['subtitle'] }} · 1 artículo registrado</p>
-                </div>
-                <span class="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 tabular-nums">
-                    <span class="sr-only">Cantidad retirada </span>{{ $articuloUnico['withdrawn'] }}
-                </span>
-            @else
-                <ul x-show="!expanded" aria-label="Vista previa de artículos" class="space-y-2">
-                    @foreach ($articulos->take($cantidadVistaPrevia) as $articulo)
-                        <li wire:key="{{ $id }}-preview-{{ $articulo['id'] }}" class="flex justify-between gap-3 text-sm">
-                            <span class="min-w-0 wrap-anywhere">{{ $articulo['name'] }}</span>
-                            <span class="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 tabular-nums">
-                                <span class="sr-only">Cantidad retirada </span>{{ $articulo['withdrawn'] }}
-                            </span>
-                        </li>
-                    @endforeach
-                </ul>
-                <h3 x-show="expanded" style="display: none" class="text-sm font-semibold">Artículos registrados</h3>
+        <div @if ($mostrarTablaCompleta) x-show="!expanded" @endif class="mt-5">
+            <x-inventory-history-detail-table :id="$id.'-preview'" :title="$titulo" :details="$vistaPrevia"
+                item-label="Artículo" :columns="$columnasDetalle" class="[&_thead]:uppercase" />
+            @if ($mostrarTablaCompleta)
+                <p class="mt-2 text-xs text-muted">
+                    {{ $articulosRestantes === 1 ? 'Y 1 artículo más…' : 'Y '.$articulosRestantes.' artículos más…' }}
+                </p>
             @endif
         </div>
-        @if ($articulosRestantes > 0)
-            <p x-show="!expanded" class="mt-2 text-xs text-muted">Y {{ $articulosRestantes }} artículos más…</p>
-        @endif
     @else
         <p class="mt-5 border-t border-line pt-4 text-sm text-muted">Esta salida no tiene artículos registrados.</p>
     @endif
 
-    <div id="{{ $id }}-detail" @if ($cantidadArticulos) x-show="expanded" style="display: none" @endif>
-        @if ($cantidadArticulos)
+    <div id="{{ $id }}-detail" @if ($mostrarDetalle) x-show="expanded" style="display: none" @endif>
+        @if ($mostrarTablaCompleta)
+            <h3 class="mt-5 border-t border-line pt-4 text-sm font-semibold">Artículos registrados</h3>
             <x-inventory-history-detail-table :id="$id" :title="$titulo" :details="$articulos" item-label="Artículo"
-                :columns="$columnasDetalle" class="mt-4 [&_thead]:uppercase" />
+                :columns="$columnasDetalle" class="mt-3 [&_thead]:uppercase" />
         @endif
-        @if (filled($movimiento->observaciones))
+        @if ($tieneObservaciones)
             <p class="mt-3 border-t border-line pt-3 text-xs whitespace-pre-line text-muted wrap-anywhere">
                 <span class="font-medium text-ink">Observaciones:</span> {{ $movimiento->observaciones }}
             </p>
