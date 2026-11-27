@@ -29,7 +29,7 @@
             @foreach ($navigation as $group)
                 @php
                     $groupId = $group['icon'];
-                    $active = collect($group['items'])->contains(fn ($item) => request()->routeIs($item[0]));
+                    $active = collect($group['items'])->contains(fn ($item) => request()->routeIs($item[3] ?? $item[0]));
                 @endphp
                 <div data-navigation-group data-group-id="{{ $groupId }}" data-active="{{ $active ? 'true' : 'false' }}">
                     <button type="button" data-group-toggle data-tooltip="{{ $group['label'] }}" aria-controls="nav-{{ $groupId }}" aria-expanded="{{ $active ? 'true' : 'false' }}" @class(['nav-link w-full', 'nav-group-active' => $active])>
@@ -40,8 +40,9 @@
                     <div id="nav-{{ $groupId }}" data-group-panel @if(! $active) hidden @endif class="nav-group-panel">
                         <p class="nav-flyout-heading px-3 pt-2 pb-3 text-sm font-semibold text-ink">{{ $group['label'] }}</p>
                         <div class="flex flex-col gap-1">
-                            @foreach ($group['items'] as [$route, $label, $icon])
-                                <a data-navigation-link href="{{ route($route) }}" @if(request()->routeIs($route)) aria-current="page" @endif class="nav-link text-[13px]">
+                            @foreach ($group['items'] as $item)
+                                @php([$route, $label, $icon] = $item)
+                                <a data-navigation-link href="{{ route($route) }}" @if(request()->routeIs($item[3] ?? $route)) aria-current="page" @endif class="nav-link text-[13px]">
                                     <x-icon :name="$icon" class="size-[18px]" /><span>{{ $label }}</span>
                                 </a>
                             @endforeach

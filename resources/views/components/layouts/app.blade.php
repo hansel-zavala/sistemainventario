@@ -25,6 +25,12 @@
         ]],
     ];
 
+    if (auth()->user()->can('acceder-taller')) {
+        $navigation[] = ['label' => 'Taller', 'icon' => 'tools', 'items' => [
+            ['taller.ingresos.index', 'Ingresos', 'entry', 'taller.ingresos.*'],
+        ]];
+    }
+
     if (auth()->user()->hasRole('Administrador')) {
         $navigation[] = ['label' => 'Administración', 'icon' => 'shield', 'items' => [
             ['administracion.usuarios', 'Usuarios', 'users'],
@@ -35,8 +41,9 @@
     $currentSection = null;
     $currentPage = request()->routeIs('perfil.*') ? 'Mi perfil' : ($title ?? 'Dashboard');
     foreach ($navigation as $group) {
-        foreach ($group['items'] as [$route, $label]) {
-            if (request()->routeIs($route)) {
+        foreach ($group['items'] as $item) {
+            [$route, $label] = $item;
+            if (request()->routeIs($item[3] ?? $route)) {
                 $currentSection = $group['label'];
                 $currentPage = $label;
             }

@@ -52,6 +52,14 @@
         @endforeach
     </x-slot:general>
 
+    <x-slot:tecnico>
+        @if ($ingresosTaller === null)
+            <p class="rounded-xl border border-line bg-canvas/60 p-4 text-sm text-muted">La consulta de ingresos de Taller está disponible para técnicos y administradores.</p>
+        @else
+            @include('livewire.taller.ingresos.historial', ['historial' => $ingresosTaller, 'mensajeVacio' => 'Este equipo aún no tiene ingresos de Taller.'])
+        @endif
+    </x-slot:tecnico>
+
     <x-slot:movimientos>
         @if ($movimientos->isEmpty())
             <p class="rounded-xl border border-line bg-canvas/60 p-4 text-sm text-muted">Este equipo aún no tiene movimientos registrados.</p>

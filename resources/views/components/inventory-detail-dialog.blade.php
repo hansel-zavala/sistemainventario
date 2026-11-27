@@ -71,13 +71,7 @@
         @if ($showTechnicalHistory)
         <div id="{{ $id }}-panel-tecnico" role="tabpanel" aria-labelledby="{{ $id }}-tab-tecnico"
             x-show="tab === 'tecnico'" style="display: none" tabindex="0" class="px-4 py-5 sm:px-5">
-            <div class="flex items-start gap-3 rounded-xl border border-line bg-canvas/60 p-4">
-                <x-icon name="tools" class="mt-0.5 text-muted" />
-                <div>
-                    <h3 class="text-sm font-semibold">Historial técnico pendiente de integración</h3>
-                    <p class="mt-1 text-sm text-muted">Las reparaciones y los mantenimientos aparecerán aquí cuando esté disponible el módulo de Taller.</p>
-                </div>
-            </div>
+            {{ $tecnico }}
         </div>
         @endif
 

@@ -155,7 +155,7 @@
     </x-data-table>
 
     @if ($equipoDetalle)
-        @include('livewire.inventario.equipos.detalle', ['equipo' => $equipoDetalle, 'movimientos' => $movimientosEquipo])
+        @include('livewire.inventario.equipos.detalle', ['equipo' => $equipoDetalle, 'movimientos' => $movimientosEquipo, 'ingresosTaller' => $ingresosEquipo])
     @endif
 
     <!-- Modal de creacion y edicion -->
@@ -365,122 +365,9 @@
     @endif
 
 
-    <!-- Modal de catálogo rápido -->
     @if ($mostrarModalCatalogo)
-        
-        <dialog wire:key="modal-catalogo-equipo" wire:ignore.self x-data x-init="$el.showModal()"
-            x-on:cancel.prevent="$wire.cerrarModalCatalogo()"
-            aria-labelledby="titulo-modal-catalogo-equipo"
-            class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/50">
-
-                <div class="mb-4 flex items-center justify-between">
-
-                    <div>
-                        <h3 id="titulo-modal-catalogo-equipo" class="text-lg font-bold text-gray-800">
-                            @if ($tipoCatalogo === 'categoria')
-                                Nueva categoría
-                            @elseif ($tipoCatalogo === 'tipo_equipo')
-                                Tipo de equipo
-                            @elseif ($tipoCatalogo === 'departamento')
-                                Nuevo departamento
-                            @elseif ($tipoCatalogo === 'marca')
-                                Marca
-                            @else
-                                Nuevo registro
-                            @endif
-                        </h3>
-
-                        @unless ($catalogoVinculable)
-                            <p class="text-xs text-gray-500">
-                                Ingrese el nombre para registrarlo rápidamente.
-                            </p>
-                        @endunless
-                    </div>
-
-                    <button type="button" wire:click="cerrarModalCatalogo" autofocus aria-label="Cerrar"
-                        class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
-                        <x-icon name="close" class="size-4" />
-                    </button>
-
-                </div>
-
-                <form
-                    wire:submit="guardarCatalogoRapido"
-                    class="space-y-4"
-                >
-                    @if ($catalogoVinculable)
-                        <x-catalogo-rapido-vinculo
-                            :categoria="$categoriaCatalogo"
-                            :opciones="$opcionesCatalogoExistente"
-                            :vincular-existente="$vincularExistente"
-                        />
-                    @endif
-
-                    @unless ($catalogoVinculable && $vincularExistente)
-                    <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">
-                            Nombre <span aria-hidden="true" class="text-red-600">*</span>
-                        </label>
-
-                        <input
-                            type="text"
-                            wire:model="nuevoNombreCatalogo"
-                            placeholder="Nombre del registro"
-                            class="w-full rounded-full border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
-                            autofocus
-                        >
-
-                        @error('nuevoNombreCatalogo')
-                            <p class="mt-1 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    @if ($tipoCatalogo === 'departamento')
-                        <div>
-                            <label class="mb-1 block text-sm font-medium text-gray-700">
-                                Sigla <span aria-hidden="true" class="text-red-600">*</span>
-                            </label>
-
-                            <input
-                                type="text"
-                                wire:model="nuevaSiglaDepartamento"
-                                placeholder="Ej. RRHH"
-                                class="w-full rounded-full border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
-                            >
-
-                            @error('nuevaSiglaDepartamento')
-                                <p class="mt-1 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-                        </div>
-                    @endif
-
-                    @endunless
-
-                    <div class="flex justify-end gap-3 border-t border-gray-100 pt-4">
-                        <button
-                            type="button"
-                            wire:click="cerrarModalCatalogo"
-                            class="cursor-pointer rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
-                        >
-                            Cancelar
-                        </button>
-
-                        <button
-                            type="submit"
-                            class="cursor-pointer rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                        >
-                            {{ $catalogoVinculable && $vincularExistente ? 'Vincular y seleccionar' : 'Guardar' }}
-                        </button>
-                    </div>
-
-                </form>
-
-        </dialog>
-
+        <x-catalogo-rapido-equipo id="modal-catalogo-equipo" :tipo="$tipoCatalogo" :categoria="$categoriaCatalogo"
+            :opciones="$opcionesCatalogoExistente" :vinculable="$catalogoVinculable" :vincular-existente="$vincularExistente" />
     @endif
 
 </div>

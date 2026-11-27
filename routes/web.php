@@ -7,6 +7,7 @@ use App\Http\Controllers\DevolucionesExportController;
 use App\Http\Controllers\EntradasExportController;
 use App\Http\Controllers\EquiposExportController;
 use App\Http\Controllers\HistorialMovimientosExportController;
+use App\Http\Controllers\IngresoTallerDocumentoController;
 use App\Http\Controllers\InventoryExportController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\PrestamosExportController;
@@ -29,6 +30,8 @@ use App\Livewire\Movimientos\Devoluciones\Index as DevolucionesIndex;
 use App\Livewire\Movimientos\Entradas\Index as EntradasIndex;
 use App\Livewire\Movimientos\Prestamos\Index as PrestamosIndex;
 use App\Livewire\Movimientos\Salidas\Index as SalidasIndex;
+use App\Livewire\Taller\Ingresos\Formulario as IngresoTallerFormulario;
+use App\Livewire\Taller\Ingresos\Index as IngresosTallerIndex;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -204,6 +207,14 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/historial/movimientos/exportar', HistorialMovimientosExportController::class)
         ->name('historial.movimientos.exportar');
+
+    Route::prefix('taller/ingresos')->name('taller.ingresos.')->middleware('can:acceder-taller')->group(function (): void {
+        Route::get('/', IngresosTallerIndex::class)->name('index');
+        Route::get('/nuevo', IngresoTallerFormulario::class)->name('nuevo');
+        Route::get('/{ingreso}', IngresoTallerFormulario::class)->whereNumber('ingreso')->name('ver');
+        Route::get('/{ingreso}/imprimir', [IngresoTallerDocumentoController::class, 'imprimir'])->whereNumber('ingreso')->name('imprimir');
+        Route::get('/{ingreso}/firmado', [IngresoTallerDocumentoController::class, 'descargar'])->whereNumber('ingreso')->name('firmado');
+    });
 
     Route::post('/logout', [LoginController::class, 'destroy'])
         ->name('logout');

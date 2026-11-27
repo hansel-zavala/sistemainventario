@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -28,6 +29,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::define('acceder-taller', fn (User $user): bool => $user->activo && $user->hasAnyRole(['Administrador', 'Técnico']));
+
         RateLimiter::for('login', fn (Request $request) => [
             Limit::perMinute(30)->by('login-ip:'.$request->ip())
                 ->response(fn (Request $request, array $headers) => $this->authenticationCooldownResponse($request, $headers)),

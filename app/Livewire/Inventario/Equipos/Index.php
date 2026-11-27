@@ -6,14 +6,18 @@ use App\Livewire\Inventario\CatalogosPorCategoria;
 use App\Models\Categoria;
 use App\Models\Departamento;
 use App\Models\Equipo;
+use App\Models\IngresoTaller;
 use App\Models\Marca;
 use App\Models\TipoEquipo;
 use App\Services\EquiposTable;
 use App\Services\HistorialMovimientosTable;
 use App\Services\MovimientosTable;
 use App\Services\RegistrarAuditoria;
+use App\Services\RegistrarCatalogoEquipo;
+use App\Services\RegistrarEquipo;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -29,6 +33,18 @@ class Index extends Component
     use WithPagination;
 
     private const TIPO_CATEGORIA = 'equipo';
+
+    private const CAMPOS_EQUIPO = [
+        'categoria_id' => 'categoriaId',
+        'tipo_equipo_id' => 'tipoEquipoId',
+        'departamento_id' => 'departamentoId',
+        'marca_id' => 'marcaId',
+        'modelo' => 'modelo',
+        'color' => 'color',
+        'numero_serie' => 'numeroSerie',
+        'numero_inventario' => 'numeroInventario',
+        'observaciones' => 'observaciones',
+    ];
 
     public string $desde = '';
 
@@ -191,12 +207,14 @@ class Index extends Component
 
         $this->equipoDetalleId = Equipo::query()->findOrFail($id, ['id'])->id;
         $this->resetPage('movimientosEquipo');
+        $this->resetPage('ingresosEquipo');
     }
 
     public function cerrarDetalle(): void
     {
         $this->equipoDetalleId = null;
         $this->resetPage('movimientosEquipo');
+        $this->resetPage('ingresosEquipo');
     }
 
     public function crearEquipo(): void
@@ -270,14 +288,7 @@ class Index extends Component
 
     public function abrirModalCatalogo(string $tipo): void
     {
-        $tiposPermitidos = [
-            'categoria',
-            'tipo_equipo',
-            'departamento',
-            'marca',
-        ];
-
-        if (! in_array($tipo, $tiposPermitidos, true)) {
+        if (! RegistrarCatalogoEquipo::permite($tipo)) {
             return;
         }
 
@@ -301,226 +312,34 @@ class Index extends Component
         $this->resetValidation();
     }
 
-    protected function rulesCatalogoRapido(): array
+    public function guardarCatalogoRapido(RegistrarCatalogoEquipo $registro): void
     {
-        $rules = [
-            'nuevoNombreCatalogo' => [
-                'required',
-                'string',
-                'max:150',
-            ],
-        ];
+        abort_unless($this->mostrarModalCatalogo && RegistrarCatalogoEquipo::permite($this->tipoCatalogo), 422);
+        $vincular = $this->vincularExistente && RegistrarCatalogoEquipo::esVinculable($this->tipoCatalogo);
+        $this->validate($registro->reglas($this->tipoCatalogo, $vincular), $registro->mensajes());
 
-        if ($this->tipoCatalogo === 'departamento') {
-            $rules['nuevaSiglaDepartamento'] = [
-                'nullable',
-                'string',
-                'max:20',
-            ];
+        if ($vincular) {
+            abort_unless($this->mostrarModal, 422);
+            $opcion = $registro->vincular($this->tipoCatalogo, (int) $this->catalogoExistenteId, $this->categoriaId);
+        } else {
+            $opcion = $registro->crear(
+                $this->tipoCatalogo, $this->nuevoNombreCatalogo, $this->nuevaSiglaDepartamento, $this->categoriaId, (int) Auth::id(),
+            );
         }
 
-        return $rules;
-    }
-
-    protected function messagesCatalogoRapido(): array
-    {
-        return [
-            'nuevoNombreCatalogo.required' => 'El nombre es obligatorio.',
-
-            'nuevoNombreCatalogo.max' => 'El nombre no puede superar los 150 caracteres.',
-
-            'nuevaSiglaDepartamento.max' => 'La sigla no puede superar los 20 caracteres.',
-        ];
-    }
-
-    public function guardarCatalogoRapido(): void
-    {
-        if ($this->vincularExistente && $this->modeloCatalogoVinculable() !== null) {
-            $this->vincularCatalogoRapido();
-
-            return;
-        }
-
-        $this->validate(
-            $this->rulesCatalogoRapido(),
-            $this->messagesCatalogoRapido()
-        );
-
-        $nombre = trim($this->nuevoNombreCatalogo);
-
-        $guardado = DB::transaction(function () use ($nombre) {
-
-            /* Categoría */
-
-            if ($this->tipoCatalogo === 'categoria') {
-
-                $duplicada = Categoria::query()
-                    ->where('aplica_a', 'equipo')
-                    ->whereRaw(
-                        'LOWER(TRIM(nombre)) = ?',
-                        [mb_strtolower($nombre)]
-                    )
-                    ->exists();
-
-                if ($duplicada) {
-                    $this->addError(
-                        'nuevoNombreCatalogo',
-                        'Ya existe una categoría con este nombre.'
-                    );
-
-                    return false;
-                }
-
-                $categoria = Categoria::create([
-                    'nombre' => $nombre,
-                    'aplica_a' => 'equipo',
-                    'activo' => true,
-                    'creado_por' => Auth::id(),
-                ]);
-
-                RegistrarAuditoria::creacion($categoria, [
-                    'nombre',
-                    'aplica_a',
-                    'activo',
-                ]);
-
-                $this->categoriaId = (string) $categoria->id;
-                $this->updatedCategoriaId();
-
-                return true;
-            }
-
-            /* Tipo de equipo */
-
-            if ($this->tipoCatalogo === 'tipo_equipo') {
-                $categoria = $this->exigirCategoriaParaAltaRapida();
-
-                $duplicado = TipoEquipo::query()
-                    ->whereRaw(
-                        'LOWER(TRIM(nombre)) = ?',
-                        [mb_strtolower($nombre)]
-                    )
-                    ->exists();
-
-                if ($duplicado) {
-                    $this->addError(
-                        'nuevoNombreCatalogo',
-                        'Ya existe un tipo de equipo con este nombre. Elija «Vincular existente» para usarlo.'
-                    );
-
-                    return false;
-                }
-
-                $tipoEquipo = TipoEquipo::create([
-                    'nombre' => $nombre,
-                    'activo' => true,
-                    'creado_por' => Auth::id(),
-                ]);
-                $tipoEquipo->categorias()->attach($categoria->id);
-
-                RegistrarAuditoria::creacion($tipoEquipo, [
-                    'nombre',
-                    'activo',
-                ]);
-
-                $this->tipoEquipoId = (string) $tipoEquipo->id;
-
-                return true;
-            }
-
-            /* Departamento */
-
-            if ($this->tipoCatalogo === 'departamento') {
-
-                $duplicado = Departamento::query()
-                    ->whereRaw(
-                        'LOWER(TRIM(nombre)) = ?',
-                        [mb_strtolower($nombre)]
-                    )
-                    ->exists();
-
-                if ($duplicado) {
-                    $this->addError(
-                        'nuevoNombreCatalogo',
-                        'Ya existe un departamento con este nombre.'
-                    );
-
-                    return false;
-                }
-
-                $sigla = trim($this->nuevaSiglaDepartamento);
-
-                $departamento = Departamento::create([
-                    'nombre' => $nombre,
-                    'sigla' => $sigla !== ''
-                        ? strtoupper($sigla)
-                        : null,
-                    'activo' => true,
-                    'creado_por' => Auth::id(),
-                ]);
-
-                RegistrarAuditoria::creacion($departamento, [
-                    'nombre',
-                    'sigla',
-                    'activo',
-                ]);
-
-                $this->departamentoId = (string) $departamento->id;
-
-                return true;
-            }
-
-            /* Marca */
-
-            if ($this->tipoCatalogo === 'marca') {
-                $categoria = $this->exigirCategoriaParaAltaRapida();
-
-                $duplicada = Marca::query()
-                    ->whereRaw(
-                        'LOWER(TRIM(nombre)) = ?',
-                        [mb_strtolower($nombre)]
-                    )
-                    ->exists();
-
-                if ($duplicada) {
-                    $this->addError(
-                        'nuevoNombreCatalogo',
-                        'Ya existe una marca con este nombre. Elija «Vincular existente» para usarla.'
-                    );
-
-                    return false;
-                }
-
-                $marca = Marca::create([
-                    'nombre' => $nombre,
-                    'activo' => true,
-                    'creado_por' => Auth::id(),
-                ]);
-                $marca->categorias()->attach($categoria->id);
-
-                RegistrarAuditoria::creacion($marca, [
-                    'nombre',
-                    'activo',
-                ]);
-
-                $this->marcaId = (string) $marca->id;
-
-                return true;
-            }
-
-            return false;
-        }, 3);
-
-        if (! $guardado) {
-            return;
+        $propiedad = match ($this->tipoCatalogo) {
+            'categoria' => 'categoriaId',
+            'tipo_equipo' => 'tipoEquipoId',
+            'marca' => 'marcaId',
+            'departamento' => 'departamentoId',
+        };
+        $this->{$propiedad} = (string) $opcion->id;
+        if ($this->tipoCatalogo === 'categoria') {
+            $this->updatedCategoriaId();
         }
 
         $this->cerrarModalCatalogo();
-
-        session()->flash(
-            'mensajeCatalogo',
-            'Registro creado y seleccionado correctamente.'
-        );
+        session()->flash('mensajeCatalogo', $vincular ? 'Opción vinculada y seleccionada correctamente.' : 'Registro creado y seleccionado correctamente.');
     }
 
     private function resetFormulario(): void
@@ -539,65 +358,12 @@ class Index extends Component
 
     protected function rules(): array
     {
-        $reglaDatosEquipo = $this->equipoId === null ? 'required' : 'nullable';
+        $reglas = [];
+        foreach (RegistrarEquipo::reglas(alta: $this->equipoId === null) as $campo => $regla) {
+            $reglas[self::CAMPOS_EQUIPO[$campo]] = $regla;
+        }
 
-        return [
-            'categoriaId' => [
-                'bail',
-                'required',
-                'integer',
-                'exists:categorias,id',
-            ],
-
-            'tipoEquipoId' => [
-                'bail',
-                'required',
-                'integer',
-                'exists:tipos_equipo,id',
-            ],
-
-            'departamentoId' => [
-                'required',
-                'exists:departamentos,id',
-            ],
-
-            'marcaId' => [
-                'bail',
-                'required',
-                'integer',
-                'exists:marcas,id',
-            ],
-
-            'modelo' => [
-                $reglaDatosEquipo,
-                'string',
-                'max:100',
-            ],
-
-            'color' => [
-                $reglaDatosEquipo,
-                'string',
-                'max:50',
-            ],
-
-            'numeroSerie' => [
-                $reglaDatosEquipo,
-                'string',
-                'max:100',
-            ],
-
-            'numeroInventario' => [
-                'required',
-                'string',
-                'max:100',
-            ],
-
-            'observaciones' => [
-                $reglaDatosEquipo,
-                'string',
-                'max:2000',
-            ],
-        ];
+        return $reglas;
     }
 
     protected function messages(): array
@@ -640,148 +406,44 @@ class Index extends Component
         ];
     }
 
-    public function guardarEquipo(): void
+    public function guardarEquipo(RegistrarEquipo $registro): void
     {
         $this->validate();
 
+        $datos = [];
+        foreach (self::CAMPOS_EQUIPO as $campo => $propiedad) {
+            $datos[$campo] = $this->{$propiedad};
+        }
+        $datos = RegistrarEquipo::normalizar($datos);
         $esCreacion = $this->equipoId === null;
 
-        $numeroInventario = trim($this->numeroInventario);
-        $numeroSerie = trim($this->numeroSerie);
-
-        DB::transaction(function () use (
-            $esCreacion,
-            $numeroInventario,
-            $numeroSerie
-        ) {
-
-            /* Obtener y bloquear el equipo cuando se edita */
-
-            $equipo = null;
-
-            if (! $esCreacion) {
-                $equipo = Equipo::query()
-                    ->whereKey($this->equipoId)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-            }
-
-            $categoria = $this->validarCategoriaYMarca($equipo);
-
-            if (! $this->conservaOpcion($equipo, 'tipo_equipo_id', $this->tipoEquipoId)
-                && ! $this->opcionDisponible(TipoEquipo::class, $categoria, $this->tipoEquipoId, bloquear: true)) {
-                throw ValidationException::withMessages([
-                    'tipoEquipoId' => 'Seleccione un tipo de equipo activo vinculado a la categoría.',
-                ]);
-            }
-
-            /* Validar número de inventario único */
-
-            $inventarioDuplicado = Equipo::query()
-                ->whereRaw(
-                    'LOWER(TRIM(numero_inventario)) = ?',
-                    [mb_strtolower($numeroInventario)]
-                )
-                ->when(
-                    ! $esCreacion,
-                    fn ($query) => $query->where(
-                        'id',
-                        '!=',
-                        $this->equipoId
-                    )
-                )
-                ->exists();
-
-            if ($inventarioDuplicado) {
-                throw ValidationException::withMessages([
-                    'numeroInventario' => 'Ya existe un equipo con este número de inventario.',
-                ]);
-            }
-
-            /* Validar número de serie único cuando se proporciona */
-
-            if ($numeroSerie !== '') {
-
-                $serieDuplicada = Equipo::query()
-                    ->whereRaw(
-                        'LOWER(TRIM(numero_serie)) = ?',
-                        [mb_strtolower($numeroSerie)]
-                    )
-                    ->when(
-                        ! $esCreacion,
-                        fn ($query) => $query->where(
-                            'id',
-                            '!=',
-                            $this->equipoId
-                        )
-                    )
-                    ->exists();
-
-                if ($serieDuplicada) {
-                    throw ValidationException::withMessages([
-                        'numeroSerie' => 'Ya existe un equipo con este número de serie.',
-                    ]);
-                }
-            }
-
-            /* Preparar datos del equipo */
-
-            $datos = [
-                'categoria_id' => (int) $this->categoriaId,
-                'tipo_equipo_id' => (int) $this->tipoEquipoId,
-                'departamento_id' => (int) $this->departamentoId,
-                'marca_id' => (int) $this->marcaId,
-
-                'modelo' => trim($this->modelo) !== ''
-                    ? trim($this->modelo)
-                    : null,
-
-                'color' => trim($this->color) !== ''
-                    ? trim($this->color)
-                    : null,
-
-                'numero_serie' => $numeroSerie !== ''
-                    ? $numeroSerie
-                    : null,
-
-                'numero_inventario' => $numeroInventario,
-
-                'observaciones' => trim($this->observaciones) !== ''
-                    ? trim($this->observaciones)
-                    : null,
-            ];
-
-            /* Crear equipo y registrar auditoría */
-
+        try {
             if ($esCreacion) {
-
-                $datos['creado_por'] = Auth::id();
-
-                $equipo = Equipo::create($datos);
-
-                RegistrarAuditoria::creacion($equipo, [
-                    'categoria_id',
-                    'tipo_equipo_id',
-                    'departamento_id',
-                    'marca_id',
-                    'modelo',
-                    'color',
-                    'numero_serie',
-                    'numero_inventario',
-                    'observaciones',
-                ]);
+                $registro->crear($datos, (int) Auth::id());
             } else {
+                DB::transaction(function () use ($registro, $datos): void {
+                    $equipo = Equipo::query()->lockForUpdate()->findOrFail($this->equipoId);
 
-                $equipo->fill($datos);
-                RegistrarAuditoria::guardarActualizacion($equipo);
+                    $categoria = $this->validarCategoriaYMarca($equipo);
+                    if (! $this->conservaOpcion($equipo, 'tipo_equipo_id', $this->tipoEquipoId)
+                        && ! $this->opcionDisponible(TipoEquipo::class, $categoria, $this->tipoEquipoId, bloquear: true)) {
+                        throw ValidationException::withMessages([
+                            'tipoEquipoId' => 'Seleccione un tipo de equipo activo vinculado a la categoría.',
+                        ]);
+                    }
+
+                    $registro->validarIdentificadores($datos['numero_inventario'], $datos['numero_serie'], $equipo->id);
+                    $equipo->fill($datos);
+                    RegistrarAuditoria::guardarActualizacion($equipo);
+                }, 3);
             }
-        }, 3);
+        } catch (ValidationException $exception) {
+            throw RegistrarEquipo::adaptarErrores($exception, self::CAMPOS_EQUIPO);
+        }
 
         session()->flash(
             'mensaje',
-            $esCreacion
-                ? 'Equipo registrado correctamente.'
-                : 'Equipo actualizado correctamente.'
+            $esCreacion ? 'Equipo registrado correctamente.' : 'Equipo actualizado correctamente.'
         );
 
         $this->cerrarModal();
@@ -815,12 +477,16 @@ class Index extends Component
 
         $equipoDetalle = null;
         $movimientosEquipo = null;
+        $ingresosEquipo = null;
         if ($this->equipoDetalleId !== null) {
             abort_unless(Auth::user()?->activo, 403);
 
             $equipoDetalle = $table->query([])->with('creador:id,name')->find($this->equipoDetalleId);
             if ($equipoDetalle !== null) {
                 $movimientosEquipo = $historial->equipmentTimeline($equipoDetalle->id)->paginate(10, pageName: 'movimientosEquipo');
+                if (Gate::allows('acceder-taller')) {
+                    $ingresosEquipo = IngresoTaller::query()->historialEquipo($equipoDetalle->id)->paginate(6, pageName: 'ingresosEquipo');
+                }
             }
         }
 
@@ -859,6 +525,7 @@ class Index extends Component
                 'equipos',
                 'equipoDetalle',
                 'movimientosEquipo',
+                'ingresosEquipo',
                 'dateErrors',
                 'filterOptions',
                 'categorias',
